@@ -52,6 +52,8 @@ The web dashboard is only responsible for controlling the VM and displaying its 
 
 ## User Experience
 The web dashboard should look roughly like this:
+
+```text
 ╔══════════════════════════════════════════════╗
 ║              MY CLOUD PC                     ║
 ╠══════════════════════════════════════════════╣
@@ -69,6 +71,7 @@ The web dashboard should look roughly like this:
 ║              [ REBUILD ]                     ║
 ║                                              ║
 ╚══════════════════════════════════════════════╝
+```
 
 The dashboard does not provide browser-based remote desktop access.
 Once the VM is running, the public IP is displayed and the user connects to Windows using RDP.
