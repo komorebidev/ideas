@@ -76,57 +76,12 @@ The web dashboard should look roughly like this:
 The dashboard does not provide browser-based remote desktop access.
 Once the VM is running, the public IP is displayed and the user connects to Windows using RDP.
 
-API
+## API
 The application will expose a small API:
-GET  /api/desktop/status
-POST /api/desktop/start
-POST /api/desktop/stop
-POST /api/desktop/rebuild
-
-GET /api/desktop/status
-Returns the current state of the VM.
-Example:
-
-{
-  "status": "running",
-  "vmName": "my-cloud-pc",
-  "region": "Japan East",
-  "size": "Standard_D4s_v6",
-  "publicIp": "20.xxx.xxx.xxx",
-  "uptime": "02:34:12"
-}
-
-POST /api/desktop/start
-Starts an existing, deallocated VM.
-The VM and its OS disk remain intact.
-
-POST /api/desktop/stop
-Deallocates the VM so compute resources are no longer running.
-The VM's disks and configuration remain available for the next start.
-
-POST /api/desktop/rebuild
-Performs a full provisioning/rebuild operation using the Bicep template.
-Conceptually:
-
-POST /api/desktop/rebuild
-        │
-        ▼
-Azure Resource Manager
-        │
-        ▼
-Bicep deployment
-        │
-        ▼
-Windows 11 VM
-        │
-        ▼
-Networking + Public IP
-        │
-        ▼
-VM ready
-
-REBUILD is intended to be the destructive/fresh-provisioning operation.
-START should be used for normal daily use.
+* GET  /api/desktop/status
+* POST /api/desktop/start
+* POST /api/desktop/stop
+* POST /api/desktop/rebuild
 
 ##  Azure Authentication
 The application should use an Azure Managed Identity.
