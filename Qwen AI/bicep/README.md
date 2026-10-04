@@ -1,0 +1,3 @@
+# bicep
+
+* Run documentation

@@ -1,1 +1,3 @@
 # ideas
+
+* For fun deployments
