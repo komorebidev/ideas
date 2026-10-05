@@ -9,7 +9,7 @@
 
 Deploy a Rocky Linux VM on Azure running Ollama with Qwen 3 4B and Open WebUI, accessible remotely through Tailscale Funnel.
 
-- **Infrastructure:** Azure Bicep, deployed to Korea Central.
+- **Infrastructure:** Azure Bicep, deployed to Japan East.
 - **VM:** 2 vCPUs, 8 GiB RAM.
 - **Storage:** 50 GB OS disk + 100 GB persistent data disk for models and Open WebUI data.
 - **Access:** Tailscale Funnel; no custom domain required.
@@ -25,7 +25,7 @@ az vm image terms accept --urn resf:rockylinux-x86_64:9-base:latest
 ## Run command
 
 ```powershell
-az deployment sub create --location koreacentral --template-file main.bicep --parameters adminUsername=qwenuser adminPassword=xxx
+az deployment sub create --location japaneast --template-file main.bicep --parameters adminUsername=qwenuser adminPassword=xxx
 ```
 
 ## Networking
