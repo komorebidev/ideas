@@ -25,8 +25,13 @@ az vm image terms accept --urn resf:rockylinux-x86_64:9-base:latest
 ## Run command
 
 ```powershell
-az deployment sub create --location koreacentral --template-file main.bicep --parameters adminUsername=azureuser adminPassword=xxx
+az deployment sub create --location koreacentral --template-file main.bicep --parameters adminUsername=qwenuser adminPassword=xxx
 ```
+
+## Networking
+
+* No rules were applied
+* Access it using Bastion
 
 ## Cleanup:
 
