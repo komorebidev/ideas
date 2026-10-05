@@ -1,213 +1,85 @@
-```bash
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ============================================================
-# Qwen AI Lab - Rocky Linux setup
-#
-# Installs:
-#   - Ollama
-#   - Qwen 3 4B
-#   - Open WebUI using Python virtual environment
-#   - Tailscale (manual authentication)
-#
-# Persistent storage:
-#   Azure managed data disk
-#   /dev/disk/azure/scsi1/lun0
-#
-# Mounted at:
-#   /mnt/qwen-data
-#
-# Data:
-#   /mnt/qwen-data/ollama
-#   /mnt/qwen-data/open-webui
-#
-# Open WebUI:
-#   127.0.0.1:8080
-#
-# Ollama API:
-#   127.0.0.1:11434
-#
-# Internet access:
-#   Tailscale Funnel -> Open WebUI
-#
-# VM target:
-#   Standard_B2as_v2
-#   2 vCPU / 8 GB RAM
-# ============================================================
+LOG_FILE="/var/log/setupQwen.log"
 
-set +e
-
-LOG_FILE=/var/log/setupQwen.log
 exec > >(tee -a "$LOG_FILE") 2>&1
-
-set -e
 
 echo "============================================================"
 echo "Starting Qwen AI setup: $(date)"
 echo "============================================================"
 
-# ------------------------------------------------------------
-# 0. Verify root
-# ------------------------------------------------------------
-
 if [[ $EUID -ne 0 ]]; then
-    echo "ERROR: Run this script as root or with sudo."
+    echo "ERROR: Run this script as root."
     exit 1
 fi
 
-# ------------------------------------------------------------
-# Configuration
-# ------------------------------------------------------------
-
 DEVICE="/dev/disk/azure/scsi1/lun0"
-DATA_DIR="/mnt/qwen-data"
 
+DATA_DIR="/mnt/qwen-data"
 OLLAMA_DATA_DIR="$DATA_DIR/ollama"
 OPEN_WEBUI_DATA_DIR="$DATA_DIR/open-webui"
 
 OLLAMA_HOST="127.0.0.1:11434"
+
 OPEN_WEBUI_HOST="127.0.0.1"
 OPEN_WEBUI_PORT="8080"
 
 MODEL="qwen3:4b"
-
-# Start with 8K context.
-# If memory pressure occurs on the 8 GB VM,
-# reduce this to 4096.
 OLLAMA_CONTEXT_LENGTH="8192"
 
 VENV_DIR="/opt/open-webui-venv"
 
-# ------------------------------------------------------------
-# 1. Install operating system prerequisites
-# ------------------------------------------------------------
-
 echo
-echo "[1/7] Installing Rocky Linux packages..."
-
-dnf -y install \
-    curl \
-    ca-certificates \
-    jq \
-    xfsprogs \
-    util-linux \
-    python3.11 \
-    python3.11-pip
-
-# ------------------------------------------------------------
-# 2. Mount persistent Azure data disk
-# ------------------------------------------------------------
-
-echo
-echo "[2/7] Configuring persistent Azure data disk..."
-
-echo "Waiting for data disk:"
-echo "  $DEVICE"
+echo "Configuring persistent Azure data disk..."
 
 for i in $(seq 1 60); do
-
     if [[ -b "$DEVICE" ]]; then
+        echo "Data disk found: $DEVICE"
         break
     fi
-
     sleep 5
-
 done
 
 if [[ ! -b "$DEVICE" ]]; then
-    echo "ERROR: Data disk was not found at:"
+    echo "ERROR: Data disk was not found:"
     echo "  $DEVICE"
     exit 1
 fi
 
-echo "Data disk found."
-
 mkdir -p "$DATA_DIR"
 
-# ------------------------------------------------------------
-# Check whether the disk already has a filesystem
-# ------------------------------------------------------------
-
 if blkid "$DEVICE" >/dev/null 2>&1; then
-
     echo "Existing filesystem detected on $DEVICE."
-
     FILESYSTEM_TYPE=$(blkid -s TYPE -o value "$DEVICE")
     DISK_UUID=$(blkid -s UUID -o value "$DEVICE")
-
-    echo "Filesystem: $FILESYSTEM_TYPE"
-    echo "UUID:       $DISK_UUID"
-
 else
-
-    echo "No filesystem detected on $DEVICE."
-
-    echo "Creating XFS filesystem..."
-
-    mkfs.xfs "$DEVICE"
-
+    echo "No filesystem detected."
+    echo "Formatting data disk as XFS..."
+    mkfs.xfs -f "$DEVICE"
     DISK_UUID=$(blkid -s UUID -o value "$DEVICE")
-
-    echo "Created filesystem."
-    echo "UUID: $DISK_UUID"
-
 fi
-
-# ------------------------------------------------------------
-# Configure /etc/fstab
-# ------------------------------------------------------------
-
-echo
-echo "Configuring /etc/fstab..."
 
 FSTAB_ENTRY="UUID=$DISK_UUID $DATA_DIR xfs defaults,nofail 0 2"
 
 if grep -qE "[[:space:]]$DATA_DIR[[:space:]]" /etc/fstab; then
-
-    echo "An fstab entry for $DATA_DIR already exists."
-
+    echo "fstab entry already exists."
 else
-
-    echo "Adding fstab entry:"
-    echo "$FSTAB_ENTRY"
-
+    echo "Adding data disk to /etc/fstab."
     echo "$FSTAB_ENTRY" >> /etc/fstab
-
 fi
 
-# ------------------------------------------------------------
-# Mount data disk
-# ------------------------------------------------------------
-
 if mountpoint -q "$DATA_DIR"; then
-
     echo "$DATA_DIR is already mounted."
-
 else
-
     echo "Mounting data disk..."
-
     mount "$DATA_DIR"
-
 fi
 
 if ! mountpoint -q "$DATA_DIR"; then
-
     echo "ERROR: Failed to mount $DATA_DIR."
     exit 1
-
 fi
-
-echo "Data disk mounted successfully."
-
-echo
-echo "Mounted filesystem:"
-df -h "$DATA_DIR"
-
-# ------------------------------------------------------------
-# Create persistent directories
-# ------------------------------------------------------------
 
 mkdir -p "$OLLAMA_DATA_DIR"
 mkdir -p "$OPEN_WEBUI_DATA_DIR"
@@ -217,76 +89,43 @@ chmod 755 "$OLLAMA_DATA_DIR"
 chmod 755 "$OPEN_WEBUI_DATA_DIR"
 
 echo
-echo "Persistent directories:"
-echo "  $OLLAMA_DATA_DIR"
-echo "  $OPEN_WEBUI_DATA_DIR"
-
-# ------------------------------------------------------------
-# 3. Install Ollama
-# ------------------------------------------------------------
-
-echo
-echo "[3/7] Installing Ollama..."
+echo "Installing/checking Ollama..."
 
 if ! command -v ollama >/dev/null 2>&1; then
-
-    echo "Downloading Ollama installer..."
-
     curl -fsSL https://ollama.com/install.sh \
         -o /tmp/ollama-install.sh
 
     sh /tmp/ollama-install.sh
 
     rm -f /tmp/ollama-install.sh
-
 else
-
     echo "Ollama is already installed."
-
 fi
 
 if ! command -v ollama >/dev/null 2>&1; then
-
     echo "ERROR: Ollama installation failed."
     exit 1
-
 fi
 
 echo "Ollama version:"
 ollama --version
 
-# ------------------------------------------------------------
-# Fix Ollama persistent storage permissions
-# ------------------------------------------------------------
-
 echo
 echo "Configuring Ollama storage permissions..."
 
-# Ollama runs as the "ollama" system user.
-# The persistent model directory must be writable by that user.
-
 if id ollama >/dev/null 2>&1; then
-
     chown -R ollama:ollama "$OLLAMA_DATA_DIR"
 
+    chmod 755 "$DATA_DIR"
     chmod 755 "$OLLAMA_DATA_DIR"
 
-    echo "Ollama storage ownership:"
+    echo "Ollama storage:"
+    ls -ld "$DATA_DIR"
     ls -ld "$OLLAMA_DATA_DIR"
-
 else
-
-    echo "ERROR: The ollama user was not created by the Ollama installer."
+    echo "ERROR: Ollama user was not created."
     exit 1
-
 fi
-
-# ------------------------------------------------------------
-# Configure Ollama systemd service
-# ------------------------------------------------------------
-
-echo
-echo "Configuring Ollama..."
 
 mkdir -p /etc/systemd/system/ollama.service.d
 
@@ -302,124 +141,64 @@ systemctl daemon-reload
 systemctl enable ollama
 systemctl restart ollama
 
-# ------------------------------------------------------------
-# Wait for Ollama API
-# ------------------------------------------------------------
-
 echo
 echo "Waiting for Ollama API..."
 
 OLLAMA_READY=false
 
 for i in $(seq 1 60); do
-
     if curl -fsS \
         "http://127.0.0.1:11434/api/tags" \
         >/dev/null 2>&1; then
 
         OLLAMA_READY=true
         break
-
     fi
 
     sleep 5
-
 done
 
 if [[ "$OLLAMA_READY" != true ]]; then
+    echo "ERROR: Ollama did not start."
 
-    echo
-    echo "ERROR: Ollama did not start successfully."
-
-    systemctl status ollama --no-pager || true
-
-    echo
-    echo "Recent Ollama logs:"
-    journalctl -u ollama --no-pager -n 50 || true
+    systemctl status ollama --no-pager -l || true
+    journalctl -u ollama --no-pager -n 100 || true
 
     exit 1
-
 fi
 
 echo "Ollama API is ready."
 
-# ------------------------------------------------------------
-# Verify Ollama is using persistent storage
-# ------------------------------------------------------------
-
 echo
-echo "Ollama model directory:"
-echo "  $OLLAMA_DATA_DIR"
-
-# ------------------------------------------------------------
-# 4. Download Qwen 3 4B
-# ------------------------------------------------------------
-
-echo
-echo "[4/7] Downloading Qwen 3 4B..."
+echo "Checking Qwen model..."
 
 if ollama list | awk 'NR > 1 {print $1}' | grep -qx "$MODEL"; then
-
     echo "$MODEL is already installed."
-
 else
-
-    echo "Pulling $MODEL..."
-
+    echo "Downloading $MODEL..."
     ollama pull "$MODEL"
-
 fi
 
 echo
 echo "Installed models:"
 ollama list
 
-# ------------------------------------------------------------
-# 5. Install Open WebUI
-# ------------------------------------------------------------
-
 echo
-echo "[5/7] Installing Open WebUI..."
+echo "Installing/checking Open WebUI..."
 
-if ! command -v python3.11 >/dev/null 2>&1; then
-
-    echo "ERROR: Python 3.11 is unavailable."
-    exit 1
-
-fi
-
-# ------------------------------------------------------------
-# Create Python virtual environment
-# ------------------------------------------------------------
-
-if [[ ! -x "$VENV_DIR/bin/python" ]]; then
-
-    echo "Creating Python virtual environment..."
+if [[ ! -x "$VENV_DIR/bin/open-webui" ]]; then
 
     python3.11 -m venv "$VENV_DIR"
 
+    "$VENV_DIR/bin/python" \
+        -m pip install --upgrade pip
+
+    "$VENV_DIR/bin/pip" \
+        install --upgrade open-webui
+
 else
-
-    echo "Python virtual environment already exists."
-
+    echo "Open WebUI is already installed."
 fi
-
-echo "Upgrading pip..."
-
-"$VENV_DIR/bin/python" \
-    -m pip install --upgrade pip
-
-echo "Installing/updating Open WebUI..."
-
-"$VENV_DIR/bin/python" \
-    -m pip install --upgrade open-webui
-
-# ------------------------------------------------------------
-# 6. Configure Open WebUI
-# ------------------------------------------------------------
-
-echo
-echo "[6/7] Configuring Open WebUI systemd service..."
 
 cat > /etc/systemd/system/open-webui.service <<EOF
 [Unit]
@@ -452,57 +231,38 @@ systemctl daemon-reload
 systemctl enable open-webui
 systemctl restart open-webui
 
-# ------------------------------------------------------------
-# Wait for Open WebUI
-# ------------------------------------------------------------
-
 echo
 echo "Waiting for Open WebUI..."
 
 OPEN_WEBUI_READY=false
 
 for i in $(seq 1 60); do
-
     if curl -fsS \
         "http://127.0.0.1:$OPEN_WEBUI_PORT" \
         >/dev/null 2>&1; then
 
         OPEN_WEBUI_READY=true
         break
-
     fi
 
     sleep 5
-
 done
 
 if [[ "$OPEN_WEBUI_READY" != true ]]; then
+    echo "ERROR: Open WebUI did not start."
 
-    echo
-    echo "ERROR: Open WebUI did not start successfully."
-
-    systemctl status open-webui --no-pager || true
-
-    echo
-    echo "Recent Open WebUI logs:"
+    systemctl status open-webui --no-pager -l || true
     journalctl -u open-webui --no-pager -n 100 || true
 
     exit 1
-
 fi
 
 echo "Open WebUI is ready."
 
-# ------------------------------------------------------------
-# 7. Install and enable Tailscale
-# ------------------------------------------------------------
-
 echo
-echo "[7/7] Installing Tailscale..."
+echo "Installing/checking Tailscale..."
 
 if ! command -v tailscale >/dev/null 2>&1; then
-
-    echo "Downloading Tailscale installer..."
 
     curl -fsSL https://tailscale.com/install.sh \
         -o /tmp/tailscale-install.sh
@@ -512,132 +272,44 @@ if ! command -v tailscale >/dev/null 2>&1; then
     rm -f /tmp/tailscale-install.sh
 
 else
-
     echo "Tailscale is already installed."
-
 fi
 
-systemctl enable tailscaled
-systemctl start tailscaled
-
-# ------------------------------------------------------------
-# Completion checks
-# ------------------------------------------------------------
+systemctl enable --now tailscaled
 
 echo
 echo "============================================================"
-echo "Qwen AI setup completed: $(date)"
+echo "Qwen AI setup completed"
 echo "============================================================"
 
 echo
-echo "Service status:"
-echo "---------------"
+echo "Persistent data:"
+echo "  $DATA_DIR"
 
+echo
 echo "Ollama:"
-systemctl is-active ollama || true
+echo "  API:    http://127.0.0.1:11434"
+echo "  Models: $OLLAMA_DATA_DIR"
 
+echo
 echo "Open WebUI:"
-systemctl is-active open-webui || true
+echo "  Local:  http://127.0.0.1:8080"
+echo "  Data:   $OPEN_WEBUI_DATA_DIR"
 
+echo
+echo "Model:"
+echo "  $MODEL"
+
+echo
 echo "Tailscale:"
-systemctl is-active tailscaled || true
+echo "  Authenticate manually with:"
+echo "  sudo tailscale up"
 
 echo
-echo "Installed model:"
-echo "----------------"
-
-ollama list
-
-echo
-echo "Persistent storage:"
-echo "-------------------"
-
-echo "Data disk:        $DEVICE"
-echo "Mount point:      $DATA_DIR"
-echo "Ollama models:    $OLLAMA_DATA_DIR"
-echo "Open WebUI data:  $OPEN_WEBUI_DATA_DIR"
-
-echo
-echo "Disk usage:"
-df -h "$DATA_DIR"
-
-echo
-echo "Local services:"
-echo "---------------"
-
-echo "Open WebUI:"
-echo "  http://127.0.0.1:$OPEN_WEBUI_PORT"
-
-echo
-echo "Ollama API:"
-echo "  http://127.0.0.1:11434"
-
-echo
-echo "Next steps:"
-echo "-----------"
-
-echo
-echo "1. Authenticate Tailscale manually:"
-echo
-echo "   sudo tailscale up"
-
-echo
-echo "2. Check Tailscale status:"
-echo
-echo "   tailscale status"
-
-echo
-echo "3. Test Qwen:"
-echo
-echo "   ollama run $MODEL"
-
-echo
-echo "4. Publish Open WebUI through Tailscale Funnel:"
-echo
-echo "   sudo tailscale funnel --bg $OPEN_WEBUI_PORT"
-
-echo
-echo "5. Check Funnel:"
-echo
-echo "   tailscale funnel status"
-
-echo
-echo "6. Check Open WebUI:"
-echo
-echo "   sudo systemctl status open-webui"
-
-echo
-echo "7. Check Ollama:"
-echo
-echo "   sudo systemctl status ollama"
-
-echo
-echo "8. Monitor Open WebUI logs:"
-echo
-echo "   sudo journalctl -u open-webui -f"
-
-echo
-echo "9. Monitor Ollama logs:"
-echo
-echo "   sudo journalctl -u ollama -f"
+echo "Then configure Tailscale Funnel for Open WebUI."
 
 echo
 echo "Setup log:"
 echo "  $LOG_FILE"
 
-echo
 echo "============================================================"
-echo "Setup finished successfully."
-echo "============================================================"
-```
-
-The important fix is this section:
-
-```bash
-if id ollama >/dev/null 2>&1; then
-    chown -R ollama:ollama "$OLLAMA_DATA_DIR"
-    chmod 755 "$OLLAMA_DATA_DIR"
-fi
-```
-
-That runs **after the Ollama installer creates the `ollama` user** and **before Ollama is started**, so it addresses the exact `permission denied` error from your previous deployment.
