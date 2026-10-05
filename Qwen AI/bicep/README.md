@@ -28,6 +28,12 @@ az vm image terms accept --urn resf:rockylinux-x86_64:9-base:latest
 az deployment sub create --location koreacentral --template-file main.bicep --parameters adminUsername=azureuser adminPassword=xxx
 ```
 
+## Cleanup:
+
+```powershell
+az group delete --name qwen-6411
+```
+
 ## Creating Entra applications for SSO
 
 ```powershell
