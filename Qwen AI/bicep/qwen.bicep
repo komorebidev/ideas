@@ -17,7 +17,7 @@ param osDiskSizeGB int = 50
 @description('Persistent AI data disk size in GB.')
 param dataDiskSizeGB int = 100
 
-var vmName = 'qwen-${subscriptionSuffix}'
+var vmName = 'qwen-${subscriptionSuffix}-vm'
 var nicName = '${vmName}-nic'
 var publicIpName = '${vmName}-pip'
 var dataDiskName = '${vmName}-data'
