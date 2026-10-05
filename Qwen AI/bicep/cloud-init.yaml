@@ -300,8 +300,3 @@ write_files:
 
 runcmd:
   - [bash, -lc, "/usr/local/sbin/setupQwen.sh"]
-```
-
-This keeps **one setup script** and doesn't introduce another custom systemd service. The existing `ollama.service` and `open-webui.service` are still used because those applications need to stay running after the setup script exits.
-
-The key change for your current failure is that if Ollama doesn't start, you'll now get the **actual `systemctl status` and `journalctl` output** instead of five minutes of `curl: connection refused`.
