@@ -1,3 +1,4 @@
+```yaml
 #cloud-config
 
 package_update: true
@@ -28,8 +29,12 @@ write_files:
       DEVICE=/dev/disk/azure/scsi1/lun0
       DATA_DIR=/mnt/ai-data
 
+      echo "Waiting for persistent data disk..."
+
       for i in $(seq 1 60); do
-        [ -b "$DEVICE" ] && break
+        if [ -b "$DEVICE" ]; then
+          break
+        fi
         sleep 5
       done
 
@@ -38,31 +43,64 @@ write_files:
         exit 1
       fi
 
+      echo "Data disk found: $DEVICE"
+
       mkdir -p "$DATA_DIR"
 
-      if ! blkid "$DEVICE"; then
+      # Only format the disk if it has no filesystem.
+      # This preserves the disk contents when the VM is rebuilt.
+      if ! blkid "$DEVICE" >/dev/null 2>&1; then
+        echo "Formatting data disk as XFS..."
         mkfs.xfs "$DEVICE"
+      else
+        echo "Existing filesystem detected on data disk."
       fi
 
       DISK_UUID=$(blkid -s UUID -o value "$DEVICE")
 
-      grep -q "$DISK_UUID" /etc/fstab || \
-        echo "UUID=$DISK_UUID $DATA_DIR xfs defaults,nofail 0 2" >> /etc/fstab
+      if ! grep -q "$DISK_UUID" /etc/fstab; then
+        echo "UUID=$DISK_UUID $DATA_DIR xfs defaults,nofail 0 2" \
+          >> /etc/fstab
+      fi
 
-      mount "$DATA_DIR"
+      if ! mountpoint -q "$DATA_DIR"; then
+        echo "Mounting data disk..."
+        mount "$DATA_DIR"
+      else
+        echo "Data disk already mounted."
+      fi
 
       mkdir -p "$DATA_DIR/ollama"
       mkdir -p "$DATA_DIR/open-webui"
+
+      echo "Persistent AI data directory ready: $DATA_DIR"
 
       # --------------------------------------------------
       # 2. Install Ollama
       # --------------------------------------------------
 
-      curl -fsSL https://ollama.com/install.sh \
-        -o /tmp/ollama-install.sh
+      echo "Checking Ollama installation..."
 
-      sh /tmp/ollama-install.sh
-      rm -f /tmp/ollama-install.sh
+      if ! command -v ollama >/dev/null 2>&1; then
+
+        echo "Installing Ollama..."
+
+        curl -fsSL https://ollama.com/install.sh \
+          -o /tmp/ollama-install.sh
+
+        sh /tmp/ollama-install.sh
+
+        rm -f /tmp/ollama-install.sh
+
+      else
+        echo "Ollama is already installed."
+      fi
+
+      # --------------------------------------------------
+      # 3. Configure Ollama model storage
+      # --------------------------------------------------
+
+      echo "Configuring Ollama model storage..."
 
       mkdir -p /etc/systemd/system/ollama.service.d
 
@@ -72,39 +110,116 @@ write_files:
       EOF
 
       systemctl daemon-reload
-      systemctl enable --now ollama
 
-      # Wait for Ollama API
+      # --------------------------------------------------
+      # 4. Start Ollama
+      # --------------------------------------------------
+
+      echo "Starting Ollama..."
+
+      systemctl enable ollama
+      systemctl start ollama
+
+      echo "Checking Ollama service..."
+
+      if ! systemctl is-active --quiet ollama; then
+        echo "ERROR: Ollama service failed to start."
+
+        echo "----- systemctl status ollama -----"
+        systemctl status ollama --no-pager -l || true
+
+        echo "----- journalctl -u ollama -----"
+        journalctl -u ollama --no-pager -n 100 || true
+
+        exit 1
+      fi
+
+      echo "Ollama service is running."
+
+      # --------------------------------------------------
+      # 5. Wait for Ollama API
+      # --------------------------------------------------
+
+      echo "Waiting for Ollama API..."
+
       for i in $(seq 1 60); do
-        if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+
+        if curl -fsS \
+          http://127.0.0.1:11434/api/tags \
+          >/dev/null; then
+
+          echo "Ollama API is ready."
           break
         fi
-        sleep 5
+
+        sleep 2
+
       done
 
-      if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
-        echo "ERROR: Ollama did not start."
+      if ! curl -fsS \
+        http://127.0.0.1:11434/api/tags \
+        >/dev/null; then
+
+        echo "ERROR: Ollama API did not become available."
+
+        echo "----- systemctl status ollama -----"
+        systemctl status ollama --no-pager -l || true
+
+        echo "----- journalctl -u ollama -----"
+        journalctl -u ollama --no-pager -n 100 || true
+
         exit 1
       fi
 
       # --------------------------------------------------
-      # 3. Download Qwen model
+      # 6. Download Qwen 2.5 3B
       # --------------------------------------------------
 
-      ollama pull qwen2.5:3b
+      echo "Checking Qwen 2.5 3B model..."
+
+      if ollama list | grep -q 'qwen2.5:3b'; then
+
+        echo "Qwen 2.5 3B is already installed."
+
+      else
+
+        echo "Downloading Qwen 2.5 3B..."
+
+        ollama pull qwen2.5:3b
+
+      fi
 
       # --------------------------------------------------
-      # 4. Install Open WebUI using Python
+      # 7. Install Open WebUI
       # --------------------------------------------------
 
-      python3.11 -m venv /opt/open-webui-venv
+      echo "Checking Open WebUI installation..."
 
-      /opt/open-webui-venv/bin/python -m pip install --upgrade pip
-      /opt/open-webui-venv/bin/python -m pip install open-webui
+      if [ ! -x /opt/open-webui-venv/bin/open-webui ]; then
+
+        echo "Creating Open WebUI Python environment..."
+
+        python3.11 -m venv /opt/open-webui-venv
+
+        /opt/open-webui-venv/bin/python \
+          -m pip install --upgrade pip
+
+        echo "Installing Open WebUI..."
+
+        /opt/open-webui-venv/bin/python \
+          -m pip install open-webui
+
+      else
+
+        echo "Open WebUI is already installed."
+
+      fi
 
       # --------------------------------------------------
-      # 5. Configure Open WebUI systemd service
+      # 8. Configure Open WebUI
       # --------------------------------------------------
+
+      echo "Configuring Open WebUI..."
 
       cat > /etc/systemd/system/open-webui.service <<'EOF'
       [Unit]
@@ -114,11 +229,14 @@ write_files:
 
       [Service]
       Type=simple
+
       Environment="OLLAMA_BASE_URL=http://127.0.0.1:11434"
       Environment="DATA_DIR=/mnt/ai-data/open-webui"
       Environment="HOST=127.0.0.1"
       Environment="PORT=8080"
+
       ExecStart=/opt/open-webui-venv/bin/open-webui serve
+
       Restart=always
       RestartSec=5
 
@@ -130,26 +248,61 @@ write_files:
       systemctl enable --now open-webui
 
       # --------------------------------------------------
-      # 6. Install and enable Tailscale
+      # 9. Install Tailscale
       # --------------------------------------------------
 
-      curl -fsSL https://tailscale.com/install.sh \
-        -o /tmp/tailscale-install.sh
+      echo "Checking Tailscale installation..."
 
-      sh /tmp/tailscale-install.sh
-      rm -f /tmp/tailscale-install.sh
+      if ! command -v tailscale >/dev/null 2>&1; then
+
+        echo "Installing Tailscale..."
+
+        curl -fsSL https://tailscale.com/install.sh \
+          -o /tmp/tailscale-install.sh
+
+        sh /tmp/tailscale-install.sh
+
+        rm -f /tmp/tailscale-install.sh
+
+      else
+
+        echo "Tailscale is already installed."
+
+      fi
 
       systemctl enable --now tailscaled
 
       # --------------------------------------------------
-      # 7. Finish
+      # 10. Finish
       # --------------------------------------------------
 
+      echo ""
+      echo "=============================================="
       echo "AI software installation completed."
-      echo "Open WebUI local URL: http://127.0.0.1:8080"
-      echo "Ollama API remains on localhost port 11434."
-      echo "Authenticate Tailscale manually with: sudo tailscale up"
-      echo "Then configure Funnel for Open WebUI."
+      echo "=============================================="
+      echo ""
+      echo "Ollama:"
+      echo "  API: http://127.0.0.1:11434"
+      echo "  Models: /mnt/ai-data/ollama"
+      echo ""
+      echo "Open WebUI:"
+      echo "  Local: http://127.0.0.1:8080"
+      echo "  Data: /mnt/ai-data/open-webui"
+      echo ""
+      echo "Qwen:"
+      echo "  qwen2.5:3b"
+      echo ""
+      echo "Tailscale:"
+      echo "  Authenticate manually with:"
+      echo "  sudo tailscale up"
+      echo ""
+      echo "Then configure Tailscale Funnel for Open WebUI."
+      echo ""
 
 runcmd:
   - [bash, -lc, "/usr/local/sbin/setupQwen.sh"]
+```
+
+This keeps **one setup script** and doesn't introduce another custom systemd service. The existing `ollama.service` and `open-webui.service` are still used because those applications need to stay running after the setup script exits.
+
+The key change for your current failure is that if Ollama doesn't start, you'll now get the **actual `systemctl status` and `journalctl` output** instead of five minutes of `curl: connection refused`.
