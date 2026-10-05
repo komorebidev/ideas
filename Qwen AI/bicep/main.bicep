@@ -1,7 +1,7 @@
 targetScope = 'subscription'
 
 @description('Azure region for the Qwen AI lab.')
-param location string = 'koreacentral'
+param location string = 'japaneast'
 
 @description('Linux VM administrator username.')
 param adminUsername string

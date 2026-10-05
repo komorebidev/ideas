@@ -9,7 +9,7 @@ param adminPassword string
 param subnetId string
 
 @description('Azure VM size: 2 vCPUs and 8 GiB RAM.')
-param vmSize string = 'Standard_B2s_v2'
+param vmSize string = 'Standard_B2as_v2'
 
 @description('OS disk size in GB.')
 param osDiskSizeGB int = 50
