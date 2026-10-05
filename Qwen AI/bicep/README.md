@@ -33,6 +33,20 @@ az deployment sub create --location koreacentral --template-file main.bicep --pa
 * No rules were applied
 * Access it using Bastion
 
+## Check cloud-init results
+
+### cloud-init command
+
+```powershell
+cloud-init status --long
+```
+
+### cloud-init log
+
+```powershell
+sudo cat /var/log/cloud-init-output.log
+```
+
 ## Cleanup:
 
 ```powershell
