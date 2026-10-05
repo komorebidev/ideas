@@ -1,3 +1,4 @@
+```bash
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -253,6 +254,32 @@ fi
 
 echo "Ollama version:"
 ollama --version
+
+# ------------------------------------------------------------
+# Fix Ollama persistent storage permissions
+# ------------------------------------------------------------
+
+echo
+echo "Configuring Ollama storage permissions..."
+
+# Ollama runs as the "ollama" system user.
+# The persistent model directory must be writable by that user.
+
+if id ollama >/dev/null 2>&1; then
+
+    chown -R ollama:ollama "$OLLAMA_DATA_DIR"
+
+    chmod 755 "$OLLAMA_DATA_DIR"
+
+    echo "Ollama storage ownership:"
+    ls -ld "$OLLAMA_DATA_DIR"
+
+else
+
+    echo "ERROR: The ollama user was not created by the Ollama installer."
+    exit 1
+
+fi
 
 # ------------------------------------------------------------
 # Configure Ollama systemd service
@@ -602,3 +629,15 @@ echo
 echo "============================================================"
 echo "Setup finished successfully."
 echo "============================================================"
+```
+
+The important fix is this section:
+
+```bash
+if id ollama >/dev/null 2>&1; then
+    chown -R ollama:ollama "$OLLAMA_DATA_DIR"
+    chmod 755 "$OLLAMA_DATA_DIR"
+fi
+```
+
+That runs **after the Ollama installer creates the `ollama` user** and **before Ollama is started**, so it addresses the exact `permission denied` error from your previous deployment.
