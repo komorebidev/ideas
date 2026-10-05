@@ -1,0 +1,154 @@
+#cloud-config
+
+package_update: true
+
+packages:
+  - curl
+  - ca-certificates
+  - jq
+  - xfsprogs
+  - python3.11
+  - python3.11-pip
+
+write_files:
+  - path: /usr/local/sbin/setupQwen.sh
+    owner: root:root
+    permissions: '0750'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      echo "Starting Qwen AI VM setup..."
+
+      # --------------------------------------------------
+      # 1. Mount persistent Azure data disk
+      # --------------------------------------------------
+
+      DEVICE=/dev/disk/azure/scsi1/lun0
+      DATA_DIR=/mnt/ai-data
+
+      for i in $(seq 1 60); do
+        [ -b "$DEVICE" ] && break
+        sleep 5
+      done
+
+      if [ ! -b "$DEVICE" ]; then
+        echo "ERROR: Persistent data disk not found: $DEVICE"
+        exit 1
+      fi
+
+      mkdir -p "$DATA_DIR"
+
+      if ! blkid "$DEVICE"; then
+        mkfs.xfs "$DEVICE"
+      fi
+
+      DISK_UUID=$(blkid -s UUID -o value "$DEVICE")
+
+      grep -q "$DISK_UUID" /etc/fstab || \
+        echo "UUID=$DISK_UUID $DATA_DIR xfs defaults,nofail 0 2" >> /etc/fstab
+
+      mount "$DATA_DIR"
+
+      mkdir -p "$DATA_DIR/ollama"
+      mkdir -p "$DATA_DIR/open-webui"
+
+      # --------------------------------------------------
+      # 2. Install Ollama
+      # --------------------------------------------------
+
+      curl -fsSL https://ollama.com/install.sh \
+        -o /tmp/ollama-install.sh
+
+      sh /tmp/ollama-install.sh
+      rm -f /tmp/ollama-install.sh
+
+      mkdir -p /etc/systemd/system/ollama.service.d
+
+      cat > /etc/systemd/system/ollama.service.d/storage.conf <<'EOF'
+      [Service]
+      Environment="OLLAMA_MODELS=/mnt/ai-data/ollama"
+      EOF
+
+      systemctl daemon-reload
+      systemctl enable --now ollama
+
+      # Wait for Ollama API
+      for i in $(seq 1 60); do
+        if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+          break
+        fi
+        sleep 5
+      done
+
+      if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+        echo "ERROR: Ollama did not start."
+        exit 1
+      fi
+
+      # --------------------------------------------------
+      # 3. Download Qwen model
+      # --------------------------------------------------
+
+      ollama pull qwen2.5:3b
+
+      # --------------------------------------------------
+      # 4. Install Open WebUI using Python
+      # --------------------------------------------------
+
+      python3.11 -m venv /opt/open-webui-venv
+
+      /opt/open-webui-venv/bin/python -m pip install --upgrade pip
+      /opt/open-webui-venv/bin/python -m pip install open-webui
+
+      # --------------------------------------------------
+      # 5. Configure Open WebUI systemd service
+      # --------------------------------------------------
+
+      cat > /etc/systemd/system/open-webui.service <<'EOF'
+      [Unit]
+      Description=Open WebUI
+      After=network-online.target ollama.service
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      Environment="OLLAMA_BASE_URL=http://127.0.0.1:11434"
+      Environment="DATA_DIR=/mnt/ai-data/open-webui"
+      Environment="HOST=127.0.0.1"
+      Environment="PORT=8080"
+      ExecStart=/opt/open-webui-venv/bin/open-webui serve
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+
+      systemctl daemon-reload
+      systemctl enable --now open-webui
+
+      # --------------------------------------------------
+      # 6. Install and enable Tailscale
+      # --------------------------------------------------
+
+      curl -fsSL https://tailscale.com/install.sh \
+        -o /tmp/tailscale-install.sh
+
+      sh /tmp/tailscale-install.sh
+      rm -f /tmp/tailscale-install.sh
+
+      systemctl enable --now tailscaled
+
+      # --------------------------------------------------
+      # 7. Finish
+      # --------------------------------------------------
+
+      echo "AI software installation completed."
+      echo "Open WebUI local URL: http://127.0.0.1:8080"
+      echo "Ollama API remains on localhost port 11434."
+      echo "Authenticate Tailscale manually with: sudo tailscale up"
+      echo "Then configure Funnel for Open WebUI."
+
+runcmd:
+  - [bash, -lc, "/usr/local/sbin/setupQwen.sh"]
