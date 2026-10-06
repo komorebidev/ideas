@@ -461,64 +461,51 @@ write_files:
           -m pip install --upgrade pip
 
       # ------------------------------------------------------------
+      # Install pysqlite3-binary
+      #
       # Rocky Linux 9 provides SQLite 3.34.x.
+      # Open WebUI requires SQLite 3.35.0 or newer because its
+      # database migration uses DROP COLUMN.
       #
-      # Open WebUI/Chroma requires SQLite >= 3.35.0.
+      # pysqlite3-binary provides a newer SQLite implementation
+      # without replacing Rocky Linux's system SQLite libraries.
       #
-      # pysqlite3-binary provides a newer self-contained SQLite
-      # implementation without replacing Rocky Linux's system
-      # SQLite library.
+      # The pip output is intentionally not parsed. In particular,
+      # "Requirement already satisfied" is a successful condition.
       # ------------------------------------------------------------
 
       echo
-      echo "Installing pysqlite3-binary for modern SQLite..."
+      echo "Installing pysqlite3-binary..."
 
       "$VENV_DIR/bin/python" \
           -m pip install --upgrade pysqlite3-binary
 
-      echo
-      echo "Checking bundled pysqlite3 SQLite version..."
-
-      "$VENV_DIR/bin/python" \
-          -c "import pysqlite3; print('pysqlite3 SQLite:', pysqlite3.sqlite_version)"
-
       # ------------------------------------------------------------
-      # Open WebUI/Chroma has a compatibility path intended for
-      # Google Colab:
-      #
-      #   import google.colab
-      #
-      # When that path is detected and the system SQLite is too old,
-      # Chroma switches from sqlite3 to pysqlite3.
-      #
-      # Rocky Linux 9 has SQLite 3.34.x, so create the same marker
-      # package inside this virtual environment.
-      #
-      # This does NOT modify the system SQLite installation.
+      # Make Python use pysqlite3 instead of the system sqlite3
+      # module.
       # ------------------------------------------------------------
 
       echo
-      echo "Configuring Open WebUI SQLite compatibility..."
+      echo "Configuring Python SQLite compatibility..."
 
-      SITE_PACKAGES="$(
-          "$VENV_DIR/bin/python" -c \
-          "import site; print(site.getsitepackages()[0])"
-      )"
+      SITE_PACKAGES="$("$VENV_DIR/bin/python" -c \
+          'import site; print(site.getsitepackages()[0])')"
 
-      echo "Python site-packages:"
-      echo "  $SITE_PACKAGES"
+      cat > "$SITE_PACKAGES/sitecustomize.py" <<'PY'
+      import sys
 
-      mkdir -p "$SITE_PACKAGES/google/colab"
+      try:
+          import pysqlite3
+          sys.modules["sqlite3"] = pysqlite3
+      except ImportError:
+          pass
+      PY
 
-      # Make the marker an explicit Python package.
-      touch "$SITE_PACKAGES/google/__init__.py"
-      touch "$SITE_PACKAGES/google/colab/__init__.py"
-
-      echo "Created:"
-      echo "  $SITE_PACKAGES/google/colab"
+      echo "Python SQLite compatibility configuration:"
+      echo "  $SITE_PACKAGES/sitecustomize.py"
 
       # ------------------------------------------------------------
-      # Install Open WebUI
+      # Install/update Open WebUI
       # ------------------------------------------------------------
 
       echo
@@ -528,33 +515,37 @@ write_files:
           -m pip install --upgrade open-webui
 
       # ------------------------------------------------------------
-      # Verify the SQLite compatibility path before starting
-      # Open WebUI.
+      # Verify the SQLite compatibility path.
       #
-      # Importing Open WebUI/Chroma causes the compatibility logic
-      # to detect google.colab and replace sqlite3 with pysqlite3.
+      # IMPORTANT:
+      # Do not capture pip output into a shell variable here.
+      #
+      # A message such as:
+      #
+      #   Requirement already satisfied: pysqlite3-binary...
+      #
+      # is normal pip output and must not cause setup to fail.
+      #
+      # We directly ask Python for the SQLite version instead.
       # ------------------------------------------------------------
 
       echo
       echo "Verifying Open WebUI SQLite configuration..."
 
-      SQLITE_VERSION="$(
-          "$VENV_DIR/bin/python" -c \
-          "import chromadb; import sqlite3; print(sqlite3.sqlite_version)"
-      )"
+      "$VENV_DIR/bin/python" - <<'PY'
+      import sqlite3
 
-      echo "Open WebUI/Chroma SQLite version:"
-      echo "  $SQLITE_VERSION"
+      print("Open WebUI/Chroma SQLite version:")
+      print(f"  {sqlite3.sqlite_version}")
 
-      "$VENV_DIR/bin/python" - "$SQLITE_VERSION" <<'PY'
-      import sys
-
-      version = tuple(int(x) for x in sys.argv[1].split(".")[:3])
+      version = tuple(
+          int(x) for x in sqlite3.sqlite_version.split(".")[:3]
+      )
 
       if version < (3, 35, 0):
           raise SystemExit(
               f"ERROR: Open WebUI is still using SQLite "
-              f"{sys.argv[1]}. SQLite 3.35.0 or newer is required."
+              f"{sqlite3.sqlite_version}. SQLite 3.35.0 or newer is required."
           )
 
       print("SQLite compatibility check passed.")
@@ -579,7 +570,6 @@ write_files:
 
       WorkingDirectory=$OPEN_WEBUI_DATA_DIR
 
-      Environment="HOME=/root"
       Environment="OLLAMA_BASE_URL=http://127.0.0.1:11434"
       Environment="DATA_DIR=$OPEN_WEBUI_DATA_DIR"
       Environment="HOST=$OPEN_WEBUI_HOST"
@@ -664,6 +654,13 @@ write_files:
 
       fi
 
+      if ! command -v tailscale >/dev/null 2>&1; then
+
+          echo "ERROR: Tailscale installation failed."
+          exit 1
+
+      fi
+
       systemctl enable tailscaled
       systemctl start tailscaled
 
@@ -720,6 +717,10 @@ write_files:
       echo "  http://127.0.0.1:11434"
 
       echo
+      echo "Tailscale:"
+      echo "  Installed and tailscaled is running."
+
+      echo
       echo "Next steps:"
       echo "-----------"
 
@@ -734,37 +735,32 @@ write_files:
       echo "   tailscale status"
 
       echo
-      echo "3. Test Qwen:"
-      echo
-      echo "   ollama run $MODEL"
-
-      echo
-      echo "4. Publish Open WebUI through Tailscale Funnel:"
+      echo "3. Publish Open WebUI through Tailscale Funnel:"
       echo
       echo "   sudo tailscale funnel --bg $OPEN_WEBUI_PORT"
 
       echo
-      echo "5. Check Funnel:"
+      echo "4. Check Funnel:"
       echo
       echo "   tailscale funnel status"
 
       echo
-      echo "6. Check Open WebUI:"
+      echo "5. Check Open WebUI:"
       echo
       echo "   sudo systemctl status open-webui"
 
       echo
-      echo "7. Check Ollama:"
+      echo "6. Check Ollama:"
       echo
       echo "   sudo systemctl status ollama"
 
       echo
-      echo "8. Monitor Open WebUI logs:"
+      echo "7. Monitor Open WebUI logs:"
       echo
       echo "   sudo journalctl -u open-webui -f"
 
       echo
-      echo "9. Monitor Ollama logs:"
+      echo "8. Monitor Ollama logs:"
       echo
       echo "   sudo journalctl -u ollama -f"
 
