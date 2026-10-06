@@ -47,6 +47,12 @@ cloud-init status --long
 sudo cat /var/log/cloud-init-output.log
 ```
 
+### View cloud-init line by line
+
+```powershell
+sudo tail -f /var/log/cloud-init-output.log
+```
+
 ## Cleanup:
 
 ```powershell
