@@ -460,10 +460,105 @@ write_files:
       "$VENV_DIR/bin/python" \
           -m pip install --upgrade pip
 
+      # ------------------------------------------------------------
+      # Rocky Linux 9 provides SQLite 3.34.x.
+      #
+      # Open WebUI/Chroma requires SQLite >= 3.35.0.
+      #
+      # pysqlite3-binary provides a newer self-contained SQLite
+      # implementation without replacing Rocky Linux's system
+      # SQLite library.
+      # ------------------------------------------------------------
+
+      echo
+      echo "Installing pysqlite3-binary for modern SQLite..."
+
+      "$VENV_DIR/bin/python" \
+          -m pip install --upgrade pysqlite3-binary
+
+      echo
+      echo "Checking bundled pysqlite3 SQLite version..."
+
+      "$VENV_DIR/bin/python" \
+          -c "import pysqlite3; print('pysqlite3 SQLite:', pysqlite3.sqlite_version)"
+
+      # ------------------------------------------------------------
+      # Open WebUI/Chroma has a compatibility path intended for
+      # Google Colab:
+      #
+      #   import google.colab
+      #
+      # When that path is detected and the system SQLite is too old,
+      # Chroma switches from sqlite3 to pysqlite3.
+      #
+      # Rocky Linux 9 has SQLite 3.34.x, so create the same marker
+      # package inside this virtual environment.
+      #
+      # This does NOT modify the system SQLite installation.
+      # ------------------------------------------------------------
+
+      echo
+      echo "Configuring Open WebUI SQLite compatibility..."
+
+      SITE_PACKAGES="$(
+          "$VENV_DIR/bin/python" -c \
+          "import site; print(site.getsitepackages()[0])"
+      )"
+
+      echo "Python site-packages:"
+      echo "  $SITE_PACKAGES"
+
+      mkdir -p "$SITE_PACKAGES/google/colab"
+
+      # Make the marker an explicit Python package.
+      touch "$SITE_PACKAGES/google/__init__.py"
+      touch "$SITE_PACKAGES/google/colab/__init__.py"
+
+      echo "Created:"
+      echo "  $SITE_PACKAGES/google/colab"
+
+      # ------------------------------------------------------------
+      # Install Open WebUI
+      # ------------------------------------------------------------
+
+      echo
       echo "Installing/updating Open WebUI..."
 
       "$VENV_DIR/bin/python" \
           -m pip install --upgrade open-webui
+
+      # ------------------------------------------------------------
+      # Verify the SQLite compatibility path before starting
+      # Open WebUI.
+      #
+      # Importing Open WebUI/Chroma causes the compatibility logic
+      # to detect google.colab and replace sqlite3 with pysqlite3.
+      # ------------------------------------------------------------
+
+      echo
+      echo "Verifying Open WebUI SQLite configuration..."
+
+      SQLITE_VERSION="$(
+          "$VENV_DIR/bin/python" -c \
+          "import chromadb; import sqlite3; print(sqlite3.sqlite_version)"
+      )"
+
+      echo "Open WebUI/Chroma SQLite version:"
+      echo "  $SQLITE_VERSION"
+
+      "$VENV_DIR/bin/python" - "$SQLITE_VERSION" <<'PY'
+      import sys
+
+      version = tuple(int(x) for x in sys.argv[1].split(".")[:3])
+
+      if version < (3, 35, 0):
+          raise SystemExit(
+              f"ERROR: Open WebUI is still using SQLite "
+              f"{sys.argv[1]}. SQLite 3.35.0 or newer is required."
+          )
+
+      print("SQLite compatibility check passed.")
+      PY
 
       # ------------------------------------------------------------
       # 6. Configure Open WebUI
@@ -484,6 +579,7 @@ write_files:
 
       WorkingDirectory=$OPEN_WEBUI_DATA_DIR
 
+      Environment="HOME=/root"
       Environment="OLLAMA_BASE_URL=http://127.0.0.1:11434"
       Environment="DATA_DIR=$OPEN_WEBUI_DATA_DIR"
       Environment="HOST=$OPEN_WEBUI_HOST"
