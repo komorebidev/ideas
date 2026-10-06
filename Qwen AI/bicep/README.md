@@ -53,6 +53,19 @@ sudo cat /var/log/cloud-init-output.log
 sudo tail -f /var/log/cloud-init-output.log
 ```
 
+## Check CPU credits
+
+```powershell
+az monitor metrics list --resource "$(az vm show -g qwen-6411 -n qwen-6411-vm --query id -o tsv)" --metric "CPU Credits Remaining" --interval PT1M --aggregation Average --output table
+```
+
+# Disconnect from Tailscale and stop Funnel
+
+```powershell
+sudo tailscale funnel off
+sudo tailscale down
+```
+
 ## Cleanup:
 
 ```powershell
