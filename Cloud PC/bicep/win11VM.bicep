@@ -142,7 +142,7 @@ resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {
 
   properties: {
     status: 'Enabled'
-    taskType: 'ComputeVmShudownTask'
+    taskType: 'ComputeVmShutdownTask'
 
     dailyRecurrence: {
       time: '00:00'
