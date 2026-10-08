@@ -15,7 +15,7 @@ var win11SubnetPrefix = '10.10.0.32/27'
 var postgresSubnetPrefix = '10.10.0.64/28'
 
 // PostgreSQL private DNS zone.
-var postgresPrivateDnsZoneName = 'postgres-guacamole-${subscriptionSuffix}.postgres.database.azure.com'
+var postgresPrivateDnsZoneName = 'postgres.database.azure.com'
 
 // Allow RDP only from the ACA subnet.
 resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
