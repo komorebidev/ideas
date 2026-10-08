@@ -15,7 +15,13 @@ az bicep build --file main.bicep
 ## Run command
 
 ```powershell
-az deployment sub create --name MAIN --location japaneast --template-file main.bicep --parameters adminUsername="..." adminPassword="..." postgresAdministratorLogin="..." postgresAdministratorPassword="..." guacamolePostgresUsername="..." guacamolePostgresPassword="..." --verbose
+az deployment sub create --name MAIN --location japaneast --template-file main.bicep --parameters adminUsername="..." adminPassword="..." postgresAdministratorLogin="..." postgresAdministratorPassword="..." guacamolePostgresUsername="..." guacamolePostgresPassword="..." --no-wait
+```
+
+## Check deployment status
+
+```powershell
+az deployment operation group list --resource-group rg-win11VM-dev --name MAIN --output table
 ```
 
 ## Check deployment outputs
