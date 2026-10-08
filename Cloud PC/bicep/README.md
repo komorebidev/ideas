@@ -58,3 +58,9 @@ Will not work for ACA VNet integration.
 Needs separate subnet
 
 Also, the ACA subnet needs to be at least /27 for the workload-profile environment. Microsoft Learn
+
+# Cleanup
+
+```powershell
+az group delete --name win11CPC-6411 --yes
+```
