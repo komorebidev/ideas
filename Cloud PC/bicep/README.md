@@ -2,6 +2,10 @@
 
 * Template and documentation
 
+## Checking deployment status
+
+Via Azure Portal: Navigate to your Resource Group, click on Deployments under the Settings menu, select your deployment name, and click Deployment details to see step-by-step progress for every individual resource.
+
 ## Bicep build and validation
 
 ```powershell
@@ -11,7 +15,7 @@ az bicep build --file main.bicep
 ## Run command
 
 ```powershell
-az deployment sub create --name MAIN --location japaneast --template-file main.bicep --parameters adminUsername="..." adminPassword="..." postgresAdministratorLogin="..." postgresAdministratorPassword="..." guacamolePostgresUsername="..." guacamolePostgresPassword="..."
+az deployment sub create --name MAIN --location japaneast --template-file main.bicep --parameters adminUsername="..." adminPassword="..." postgresAdministratorLogin="..." postgresAdministratorPassword="..." guacamolePostgresUsername="..." guacamolePostgresPassword="..." --verbose
 ```
 
 ## Check deployment outputs
