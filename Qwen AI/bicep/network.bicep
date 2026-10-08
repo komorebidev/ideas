@@ -2,8 +2,8 @@ param location string
 param subscriptionSuffix string
 
 var vnetName = 'vnet-qwen-${subscriptionSuffix}'
-var vnetAddressSpace = '10.10.1.0/24'
-var subnetPrefix = '10.10.1.0/24'
+var vnetAddressSpace = '10.10.0.0/24'
+var subnetPrefix = '10.10.0.0/24'
 var subnetName = 'snet-qwen'
 
 resource nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
