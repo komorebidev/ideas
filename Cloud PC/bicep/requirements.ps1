@@ -88,22 +88,20 @@ if (-not $wingetCommand) {
 # ------------------------------------------------------------
 
 $wingetCommand = Get-Command -Name "winget" -ErrorAction SilentlyContinue
-$wingetPath    = $null
+$wingetPath    =$null
 
-if (-not $wingetCommand) {
-    $wingetCandidates = @(
+if (-not $wingetCommand) {$wingetCandidates = @(
         "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*\winget.exe",
         "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe"
     )
 
-    foreach ($candidate in $wingetCandidates) {
-        $found = Get-ChildItem `
+    foreach ($candidate in $wingetCandidates) {$found = Get-ChildItem `
             -Path $candidate `
             -ErrorAction SilentlyContinue |
             Select-Object -First 1
 
         if ($found) {
-            $wingetPath = $found.FullName
+            $wingetPath =$found.FullName
             break
         }
     }
@@ -114,7 +112,7 @@ if (-not $wingetCommand) {
     }
 }
 else {
-    $wingetPath = $wingetCommand.Source
+    $wingetPath =$wingetCommand.Source
 }
 
 Write-Host "WinGet path: $wingetPath"
@@ -185,7 +183,7 @@ $apps = @(
 # Install applications machine-wide
 # ------------------------------------------------------------
 
-foreach ($app in $apps) {
+foreach ($app in$apps) {
     Write-Host ""
     Write-Host "========================================"
     Write-Host "Checking $($app.Name)"
@@ -221,7 +219,7 @@ foreach ($app in $apps) {
         --accept-source-agreements `
         --disable-interactivity
 
-    $installExitCode = $LASTEXITCODE
+    $installExitCode =$LASTEXITCODE
 
     if ($installExitCode -eq 0) {
         Write-Host "$($app.Name) installed successfully."
@@ -244,7 +242,7 @@ Write-Host "========================================"
 $psqlCommand = Get-Command -Name "psql.exe" -ErrorAction SilentlyContinue
 
 if ($psqlCommand) {
-    $psqlPath = $psqlCommand.Source
+    $psqlPath =$psqlCommand.Source
 }
 else {
     $postgresCandidates = @(
@@ -252,16 +250,15 @@ else {
         "C:\Program Files\PostgreSQL\*\bin\psql.exe"
     )
 
-    $psqlPath = $null
+    $psqlPath =$null
 
-    foreach ($candidate in $postgresCandidates) {
-        $found = Get-ChildItem `
+    foreach ($candidate in $postgresCandidates) {$found = Get-ChildItem `
             -Path $candidate `
             -ErrorAction SilentlyContinue |
             Select-Object -First 1
 
         if ($found) {
-            $psqlPath = $found.FullName
+            $psqlPath =$found.FullName
             break
         }
     }
@@ -283,15 +280,13 @@ Write-Host "========================================"
 Write-Host "Waiting for PostgreSQL"
 Write-Host "========================================"
 
-$maxAttempts = 60
-$attempt = 0
+$maxAttempts = 60$attempt = 0
 
-while ($attempt -lt $maxAttempts) {
-    $attempt++
+while ($attempt -lt $maxAttempts) {$attempt++
 
-    Write-Host "PostgreSQL connection attempt $attempt of $maxAttempts..."
+    Write-Host "PostgreSQL connection attempt $attempt of$maxAttempts..."
 
-    $env:PGPASSWORD = $PostgresAdministratorPassword
+    $env:PGPASSWORD =$PostgresAdministratorPassword
 
     & $psqlPath `
         -h $PostgresHostname `
@@ -303,7 +298,7 @@ while ($attempt -lt $maxAttempts) {
         --quiet `
         2>$null
 
-    $exitCode = $LASTEXITCODE
+    $exitCode =$LASTEXITCODE
 
     Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 
@@ -312,7 +307,7 @@ while ($attempt -lt $maxAttempts) {
         break
     }
 
-    if ($attempt -eq $maxAttempts) {
+    if ($attempt -eq$maxAttempts) {
         Write-Error "PostgreSQL did not become reachable."
         exit 1
     }
@@ -329,7 +324,7 @@ Write-Host "========================================"
 Write-Host "Configuring Guacamole PostgreSQL user"
 Write-Host "========================================"
 
-$env:PGPASSWORD = $PostgresAdministratorPassword
+$env:PGPASSWORD =$PostgresAdministratorPassword
 
 $createUserSql = @"
 DO `$`$
@@ -356,7 +351,7 @@ END
     -v "ON_ERROR_STOP=1" `
     -c $createUserSql
 
-$exitCode = $LASTEXITCODE
+$exitCode =$LASTEXITCODE
 
 Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 
@@ -422,247 +417,4 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$schemaDirectory = Join-Path `
-    $guacamoleExtractDir `
-    "guacamole-auth-jdbc-$guacamoleVersion\postgresql\schema"
-
-if (-not (Test-Path $schemaDirectory)) {
-    Write-Error "Guacamole PostgreSQL schema directory was not found."
-    exit 1
-}
-
-# ------------------------------------------------------------
-# Check whether Guacamole schema already exists
-# ------------------------------------------------------------
-
-Write-Host ""
-Write-Host "========================================"
-Write-Host "Checking Guacamole database schema"
-Write-Host "========================================"
-
-$env:PGPASSWORD = $PostgresAdministratorPassword
-
-$tableCheck = & $psqlPath `
-    -h $PostgresHostname `
-    -p 5432 `
-    -U $PostgresAdministratorLogin `
-    -d "guacamole_db" `
-    -t `
-    -A `
-    -c "SELECT to_regclass('public.guacamole_entity');" `
-    2>&1
-
-$exitCode = $LASTEXITCODE
-
-Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-
-if ($exitCode -ne 0) {
-    Write-Error "Failed to check Guacamole database schema."
-    exit $exitCode
-}
-
-# ------------------------------------------------------------
-# Initialize Guacamole database
-# ------------------------------------------------------------
-
-if ($tableCheck -match "guacamole_entity") {
-    Write-Host "Guacamole schema already exists."
-    Write-Host "Skipping schema initialization."
-}
-else {
-    Write-Host ""
-    Write-Host "========================================"
-    Write-Host "Initializing Guacamole database"
-    Write-Host "========================================"
-
-    $schemaFiles = Get-ChildItem `
-        -Path $schemaDirectory `
-        -Filter "*.sql" `
-        -File |
-        Sort-Object Name
-
-    if ($schemaFiles.Count -eq 0) {
-        Write-Error "No Guacamole PostgreSQL schema files were found."
-        exit 1
-    }
-
-    $env:PGPASSWORD = $PostgresAdministratorPassword
-
-    foreach ($schemaFile in $schemaFiles) {
-        Write-Host "Applying $($schemaFile.Name)..."
-
-        & $psqlPath `
-            -h $PostgresHostname `
-            -p 5432 `
-            -U $PostgresAdministratorLogin `
-            -d "guacamole_db" `
-            -v "ON_ERROR_STOP=1" `
-            -f $schemaFile.FullName
-
-        $exitCode = $LASTEXITCODE
-
-        if ($exitCode -ne 0) {
-            Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-
-            Write-Error "Failed to apply $($schemaFile.Name)."
-            exit $exitCode
-        }
-    }
-
-    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-
-    Write-Host "Guacamole database schema initialized."
-}
-
-# ------------------------------------------------------------
-# Grant Guacamole database permissions
-# ------------------------------------------------------------
-
-Write-Host ""
-Write-Host "========================================"
-Write-Host "Granting Guacamole database permissions"
-Write-Host "========================================"
-
-$env:PGPASSWORD = $PostgresAdministratorPassword
-
-$grantSql = @"
-GRANT USAGE ON SCHEMA public TO :"guacamole_user";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"guacamole_user";
-GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO :"guacamole_user";
-"@
-
-& $psqlPath `
-    -h $PostgresHostname `
-    -p 5432 `
-    -U $PostgresAdministratorLogin `
-    -d "guacamole_db" `
-    -v "guacamole_user=$GuacamolePostgresUsername" `
-    -v "ON_ERROR_STOP=1" `
-    -c $grantSql
-
-$exitCode = $LASTEXITCODE
-
-Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-
-if ($exitCode -ne 0) {
-    Write-Error "Failed to grant Guacamole PostgreSQL permissions."
-    exit $exitCode
-}
-
-Write-Host "Guacamole PostgreSQL permissions configured."
-
-# ------------------------------------------------------------
-# Final verification
-# ------------------------------------------------------------
-
-Write-Host ""
-Write-Host "========================================"
-Write-Host " Installation Verification"
-Write-Host "========================================"
-
-foreach ($app in $apps) {
-    Write-Host ""
-    Write-Host "Checking $($app.Name)..."
-
-    $result = & $wingetPath list `
-        --id $app.Id `
-        --exact `
-        --source winget `
-        --scope machine `
-        --disable-interactivity `
-        2>&1
-
-    if ($LASTEXITCODE -eq 0 -and ($result -match [regex]::Escape($app.Id))) {
-        Write-Host "[OK] $($app.Name) is installed."
-    }
-    else {
-        Write-Warning "[NOT FOUND] $($app.Name) was not detected."
-    }
-}
-
-# ------------------------------------------------------------
-# PostgreSQL verification
-# ------------------------------------------------------------
-
-Write-Host ""
-Write-Host "Checking PostgreSQL connection..."
-
-$env:PGPASSWORD = $GuacamolePostgresPassword
-
-& $psqlPath `
-    -h $PostgresHostname `
-    -p 5432 `
-    -U $GuacamolePostgresUsername `
-    -d "guacamole_db" `
-    -c "SELECT 1;" `
-    --no-password
-
-$exitCode = $LASTEXITCODE
-
-Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
-
-if ($exitCode -eq 0) {
-    Write-Host "[OK] Guacamole PostgreSQL user can connect."
-}
-else {
-    Write-Error "Guacamole PostgreSQL user could not connect."
-    exit $exitCode
-}
-
-Write-Host ""
-Write-Host "========================================"
-Write-Host " Installation process completed"
-Write-Host "========================================"
-
-# ------------------------------------------------------------
-# Create local standard user
-# ------------------------------------------------------------
-
-$localUsername = "raphael"
-$localPassword = ConvertTo-SecureString "9809" -AsPlainText -Force
-
-$existingUser = Get-LocalUser -Name $localUsername -ErrorAction SilentlyContinue
-
-if (-not $existingUser) {
-    Write-Host "Creating local user $localUsername..."
-
-    New-LocalUser `
-        -Name $localUsername `
-        -Password $localPassword `
-        -FullName "Raphael" `
-        -Description "Local standard user" `
-        -PasswordNeverExpires `
-        -UserMayNotChangePassword:$false
-
-    Write-Host "Local user created."
-}
-else {
-    Write-Host "Local user $localUsername already exists."
-}
-
-# ------------------------------------------------------------
-# Enable Remote Desktop
-# ------------------------------------------------------------
-
-Write-Host "Enabling Remote Desktop..."
-
-Set-ItemProperty `
-    -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
-    -Name "fDenyTSConnections" `
-    -Value 0
-
-Enable-NetFirewallRule `
-    -DisplayGroup "Remote Desktop"
-
-# ------------------------------------------------------------
-# Allow Raphael to use Remote Desktop
-# ------------------------------------------------------------
-
-Write-Host "Adding $localUsername to Remote Desktop Users..."
-
-Add-LocalGroupMember `
-    -Group "Remote Desktop Users" `
-    -Member $localUsername `
-    -ErrorAction SilentlyContinue
-
-Write-Host "Remote Desktop enabled for $localUsername."
+$schemaDirectory = Join
