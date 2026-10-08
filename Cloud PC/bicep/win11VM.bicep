@@ -21,6 +21,8 @@ param guacamolePostgresPassword string
 var vmName = 'win11VM-${subscriptionSuffix}'
 var nicName = '${vmName}-nic'
 
+var requirementsScript = loadFileAsBase64('requirements.ps1')
+
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: nicName
   location: location
@@ -48,7 +50,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
 
   properties: {
     hardwareProfile: {
-      vmSize: 'Standard_B4as_v2' // 4vcpu, 16gb ram 1日に約６００円
+      vmSize: 'Standard_B4as_v2'
     }
 
     osProfile: {
@@ -72,9 +74,11 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
 
       osDisk: {
         createOption: 'FromImage'
+
         managedDisk: {
           storageAccountType: 'Standard_LRS'
         }
+
         diskSizeGB: 127
       }
     }
@@ -101,7 +105,7 @@ resource requirementsExtension 'Microsoft.Compute/virtualMachines/extensions@202
     autoUpgradeMinorVersion: true
 
     protectedSettings: {
-      commandToExecute: 'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command "$scriptBytes = [System.Convert]::FromBase64String(''${loadFileAsBase64(''requirements.ps1'')}''); [System.IO.Directory]::CreateDirectory(''C:\\temp'') | Out-Null; [System.IO.File]::WriteAllBytes(''C:\\temp\\requirements.ps1'', $scriptBytes); & ''C:\\temp\\requirements.ps1'' -PostgresHostname ''${postgresHostname}'' -PostgresAdministratorLogin ''${postgresAdministratorLogin}'' -PostgresAdministratorPassword ''${postgresAdministratorPassword}'' -GuacamolePostgresUsername ''${guacamolePostgresUsername}'' -GuacamolePostgresPassword ''${guacamolePostgresPassword}''"'
+      commandToExecute: 'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command "$scriptBytes = [System.Convert]::FromBase64String(''${requirementsScript}''); [System.IO.Directory]::CreateDirectory(''C:\\temp'') | Out-Null; [System.IO.File]::WriteAllBytes(''C:\\temp\\requirements.ps1'', $scriptBytes); & ''C:\\temp\\requirements.ps1'' -PostgresHostname ''${postgresHostname}'' -PostgresAdministratorLogin ''${postgresAdministratorLogin}'' -PostgresAdministratorPassword ''${postgresAdministratorPassword}'' -GuacamolePostgresUsername ''${guacamolePostgresUsername}'' -GuacamolePostgresPassword ''${guacamolePostgresPassword}''"'
     }
   }
 }
@@ -115,7 +119,7 @@ resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {
     taskType: 'ComputeVmShudownTask'
 
     dailyRecurrence: {
-      time: '00:00' // Midnight (12:00 AM)
+      time: '00:00'
     }
 
     timeZoneId: 'Tokyo Standard Time'

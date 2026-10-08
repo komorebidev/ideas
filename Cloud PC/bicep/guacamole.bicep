@@ -55,7 +55,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: 'guacamole/guacamole:1.6.0'
 
           resources: {
-            cpu: 0.5
+            cpu: json('0.5')
             memory: '1Gi'
           }
 
@@ -100,7 +100,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           image: 'guacamole/guacd:1.6.0'
 
           resources: {
-            cpu: 0.25
+            cpu: json('0.25')
             memory: '0.5Gi'
           }
         }
