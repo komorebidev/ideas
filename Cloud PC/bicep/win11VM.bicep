@@ -7,6 +7,17 @@ param adminPassword string
 
 param subnetId string
 
+param postgresHostname string
+param postgresAdministratorLogin string
+
+@secure()
+param postgresAdministratorPassword string
+
+param guacamolePostgresUsername string
+
+@secure()
+param guacamolePostgresPassword string
+
 var vmName = 'win11VM-${subscriptionSuffix}'
 var nicName = '${vmName}-nic'
 
@@ -25,10 +36,6 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
           }
 
           privateIPAllocationMethod: 'Dynamic'
-
-          publicIPAddress: {
-            id: publicIp.id
-          }
         }
       }
     ]
@@ -86,13 +93,15 @@ resource requirementsExtension 'Microsoft.Compute/virtualMachines/extensions@202
   parent: vm
   name: 'requirementsInstall'
   location: location
+
   properties: {
     publisher: 'Microsoft.Compute'
     type: 'CustomScriptExtension'
     typeHandlerVersion: '1.10'
     autoUpgradeMinorVersion: true
+
     protectedSettings: {
-      commandToExecute: 'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command "$scriptBytes = [System.Convert]::FromBase64String(\'${loadFileAsBase64('requirements.ps1')}\'); [System.IO.Directory]::CreateDirectory(\'C:\\temp\') | Out-Null; [System.IO.File]::WriteAllBytes(\'C:\\temp\\requirements.ps1\', $scriptBytes); & \'C:\\temp\\requirements.ps1\'"'
+      commandToExecute: 'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command "$scriptBytes = [System.Convert]::FromBase64String(''${loadFileAsBase64(''requirements.ps1'')}''); [System.IO.Directory]::CreateDirectory(''C:\\temp'') | Out-Null; [System.IO.File]::WriteAllBytes(''C:\\temp\\requirements.ps1'', $scriptBytes); & ''C:\\temp\\requirements.ps1'' -PostgresHostname ''${postgresHostname}'' -PostgresAdministratorLogin ''${postgresAdministratorLogin}'' -PostgresAdministratorPassword ''${postgresAdministratorPassword}'' -GuacamolePostgresUsername ''${guacamolePostgresUsername}'' -GuacamolePostgresPassword ''${guacamolePostgresPassword}''"'
     }
   }
 }
@@ -100,12 +109,15 @@ resource requirementsExtension 'Microsoft.Compute/virtualMachines/extensions@202
 resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {
   name: 'shutdown-computevm-${vmName}'
   location: location
+
   properties: {
     status: 'Enabled'
     taskType: 'ComputeVmShudownTask'
+
     dailyRecurrence: {
       time: '00:00' // Midnight (12:00 AM)
     }
+
     timeZoneId: 'Tokyo Standard Time'
     targetResourceId: vm.id
   }

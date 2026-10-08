@@ -1,4 +1,19 @@
-# C:\temp\requirements.ps1
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$PostgresHostname,
+
+    [Parameter(Mandatory = $true)]
+    [string]$PostgresAdministratorLogin,
+
+    [Parameter(Mandatory = $true)]
+    [string]$PostgresAdministratorPassword,
+
+    [Parameter(Mandatory = $true)]
+    [string]$GuacamolePostgresUsername,
+
+    [Parameter(Mandatory = $true)]
+    [string]$GuacamolePostgresPassword
+)
 
 $tempDir = "C:\temp"
 
@@ -40,17 +55,24 @@ if (-not $wingetCommand) {
     $ProgressPreference = "SilentlyContinue"
 
     try {
-        # Install NuGet provider
         Write-Host "Installing NuGet provider..."
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ErrorAction Stop | Out-Null
+        Install-PackageProvider `
+            -Name NuGet `
+            -MinimumVersion 2.8.5.201 `
+            -Force `
+            -ErrorAction Stop | Out-Null
 
-        # Install WinGet PowerShell module
         Write-Host "Installing Microsoft.WinGet.Client..."
-        Install-Module -Name Microsoft.WinGet.Client -Repository PSGallery -Force -ErrorAction Stop | Out-Null
+        Install-Module `
+            -Name Microsoft.WinGet.Client `
+            -Repository PSGallery `
+            -Force `
+            -ErrorAction Stop | Out-Null
 
-        # Install/repair WinGet for all users
         Write-Host "Repairing WinGet package manager..."
-        Repair-WinGetPackageManager -AllUsers -ErrorAction Stop
+        Repair-WinGetPackageManager `
+            -AllUsers `
+            -ErrorAction Stop
 
         Write-Host "WinGet installation completed."
     }
@@ -75,7 +97,10 @@ if (-not $wingetCommand) {
     )
 
     foreach ($candidate in $wingetCandidates) {
-        $found = Get-ChildItem -Path $candidate -ErrorAction SilentlyContinue | Select-Object -First 1
+        $found = Get-ChildItem `
+            -Path $candidate `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
 
         if ($found) {
             $wingetPath = $found.FullName
@@ -106,13 +131,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ------------------------------------------------------------
-# Update only the winget source
+# Update WinGet source
 # ------------------------------------------------------------
 
 Write-Host ""
 Write-Host "Updating WinGet source..."
 
-& $wingetPath source update --source winget --disable-interactivity
+& $wingetPath source update `
+    --source winget `
+    --disable-interactivity
 
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "WinGet source update returned exit code $LASTEXITCODE."
@@ -147,6 +174,10 @@ $apps = @(
     [PSCustomObject]@{
         Name = "Windows App"
         Id   = "Microsoft.WindowsApp"
+    },
+    [PSCustomObject]@{
+        Name = "PostgreSQL 16"
+        Id   = "PostgreSQL.PostgreSQL.16"
     }
 )
 
@@ -154,7 +185,7 @@ $apps = @(
 # Install applications machine-wide
 # ------------------------------------------------------------
 
-foreach ($app in$apps) {
+foreach ($app in $apps) {
     Write-Host ""
     Write-Host "========================================"
     Write-Host "Checking $($app.Name)"
@@ -190,15 +221,335 @@ foreach ($app in$apps) {
         --accept-source-agreements `
         --disable-interactivity
 
-    $installExitCode =$LASTEXITCODE
+    $installExitCode = $LASTEXITCODE
 
     if ($installExitCode -eq 0) {
         Write-Host "$($app.Name) installed successfully."
     }
     else {
         Write-Error "Failed to install $($app.Name). Exit code: $installExitCode"
+        exit $installExitCode
     }
 }
+
+# ------------------------------------------------------------
+# Locate PostgreSQL client
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Locating PostgreSQL client"
+Write-Host "========================================"
+
+$psqlCommand = Get-Command -Name "psql.exe" -ErrorAction SilentlyContinue
+
+if ($psqlCommand) {
+    $psqlPath = $psqlCommand.Source
+}
+else {
+    $postgresCandidates = @(
+        "C:\Program Files\PostgreSQL\16\bin\psql.exe",
+        "C:\Program Files\PostgreSQL\*\bin\psql.exe"
+    )
+
+    $psqlPath = $null
+
+    foreach ($candidate in $postgresCandidates) {
+        $found = Get-ChildItem `
+            -Path $candidate `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+        if ($found) {
+            $psqlPath = $found.FullName
+            break
+        }
+    }
+}
+
+if (-not $psqlPath) {
+    Write-Error "PostgreSQL psql.exe was not found."
+    exit 1
+}
+
+Write-Host "PostgreSQL client: $psqlPath"
+
+# ------------------------------------------------------------
+# Wait for PostgreSQL private endpoint
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Waiting for PostgreSQL"
+Write-Host "========================================"
+
+$maxAttempts = 60
+$attempt = 0
+
+while ($attempt -lt $maxAttempts) {
+    $attempt++
+
+    Write-Host "PostgreSQL connection attempt $attempt of $maxAttempts..."
+
+    $env:PGPASSWORD = $PostgresAdministratorPassword
+
+    & $psqlPath `
+        -h $PostgresHostname `
+        -p 5432 `
+        -U $PostgresAdministratorLogin `
+        -d "guacamole_db" `
+        -c "SELECT 1;" `
+        --no-password `
+        --quiet `
+        2>$null
+
+    $exitCode = $LASTEXITCODE
+
+    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+    if ($exitCode -eq 0) {
+        Write-Host "PostgreSQL is reachable."
+        break
+    }
+
+    if ($attempt -eq $maxAttempts) {
+        Write-Error "PostgreSQL did not become reachable."
+        exit 1
+    }
+
+    Start-Sleep -Seconds 10
+}
+
+# ------------------------------------------------------------
+# Create Guacamole PostgreSQL user
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Configuring Guacamole PostgreSQL user"
+Write-Host "========================================"
+
+$env:PGPASSWORD = $PostgresAdministratorPassword
+
+$createUserSql = @"
+DO `$`$
+BEGIN
+    IF NOT EXISTS (
+        SELECT FROM pg_catalog.pg_roles
+        WHERE rolname = :'guacamole_user'
+    ) THEN
+        CREATE ROLE :"guacamole_user" LOGIN PASSWORD :'guacamole_password';
+    ELSE
+        ALTER ROLE :"guacamole_user" WITH LOGIN PASSWORD :'guacamole_password';
+    END IF;
+END
+`$`$;
+"@
+
+& $psqlPath `
+    -h $PostgresHostname `
+    -p 5432 `
+    -U $PostgresAdministratorLogin `
+    -d "guacamole_db" `
+    -v "guacamole_user=$GuacamolePostgresUsername" `
+    -v "guacamole_password=$GuacamolePostgresPassword" `
+    -v "ON_ERROR_STOP=1" `
+    -c $createUserSql
+
+$exitCode = $LASTEXITCODE
+
+Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+if ($exitCode -ne 0) {
+    Write-Error "Failed to create Guacamole PostgreSQL user."
+    exit $exitCode
+}
+
+Write-Host "Guacamole PostgreSQL user configured."
+
+# ------------------------------------------------------------
+# Download Guacamole JDBC schema
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Downloading Guacamole database schema"
+Write-Host "========================================"
+
+$guacamoleVersion = "1.6.0"
+$guacamoleArchive = "$tempDir\guacamole-auth-jdbc-$guacamoleVersion.tar.gz"
+$guacamoleUrl = "https://dlcdn.apache.org/guacamole/$guacamoleVersion/binary/guacamole-auth-jdbc-$guacamoleVersion.tar.gz"
+
+if (-not (Test-Path $guacamoleArchive)) {
+    Write-Host "Downloading Guacamole JDBC archive..."
+
+    Invoke-WebRequest `
+        -Uri $guacamoleUrl `
+        -OutFile $guacamoleArchive `
+        -UseBasicParsing `
+        -ErrorAction Stop
+}
+
+# ------------------------------------------------------------
+# Extract Guacamole schema
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Extracting Guacamole schema"
+Write-Host "========================================"
+
+$guacamoleExtractDir = "$tempDir\guacamole-auth-jdbc-$guacamoleVersion"
+
+if (Test-Path $guacamoleExtractDir) {
+    Remove-Item `
+        -Path $guacamoleExtractDir `
+        -Recurse `
+        -Force
+}
+
+New-Item `
+    -ItemType Directory `
+    -Path $guacamoleExtractDir `
+    -Force | Out-Null
+
+tar.exe `
+    -xzf $guacamoleArchive `
+    -C $guacamoleExtractDir
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to extract Guacamole JDBC archive."
+    exit 1
+}
+
+$schemaDirectory = Join-Path `
+    $guacamoleExtractDir `
+    "guacamole-auth-jdbc-$guacamoleVersion\postgresql\schema"
+
+if (-not (Test-Path $schemaDirectory)) {
+    Write-Error "Guacamole PostgreSQL schema directory was not found."
+    exit 1
+}
+
+# ------------------------------------------------------------
+# Check whether Guacamole schema already exists
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Checking Guacamole database schema"
+Write-Host "========================================"
+
+$env:PGPASSWORD = $PostgresAdministratorPassword
+
+$tableCheck = & $psqlPath `
+    -h $PostgresHostname `
+    -p 5432 `
+    -U $PostgresAdministratorLogin `
+    -d "guacamole_db" `
+    -t `
+    -A `
+    -c "SELECT to_regclass('public.guacamole_entity');" `
+    2>&1
+
+$exitCode = $LASTEXITCODE
+
+Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+if ($exitCode -ne 0) {
+    Write-Error "Failed to check Guacamole database schema."
+    exit $exitCode
+}
+
+# ------------------------------------------------------------
+# Initialize Guacamole database
+# ------------------------------------------------------------
+
+if ($tableCheck -match "guacamole_entity") {
+    Write-Host "Guacamole schema already exists."
+    Write-Host "Skipping schema initialization."
+}
+else {
+    Write-Host ""
+    Write-Host "========================================"
+    Write-Host "Initializing Guacamole database"
+    Write-Host "========================================"
+
+    $schemaFiles = Get-ChildItem `
+        -Path $schemaDirectory `
+        -Filter "*.sql" `
+        -File |
+        Sort-Object Name
+
+    if ($schemaFiles.Count -eq 0) {
+        Write-Error "No Guacamole PostgreSQL schema files were found."
+        exit 1
+    }
+
+    $env:PGPASSWORD = $PostgresAdministratorPassword
+
+    foreach ($schemaFile in $schemaFiles) {
+        Write-Host "Applying $($schemaFile.Name)..."
+
+        & $psqlPath `
+            -h $PostgresHostname `
+            -p 5432 `
+            -U $PostgresAdministratorLogin `
+            -d "guacamole_db" `
+            -v "ON_ERROR_STOP=1" `
+            -f $schemaFile.FullName
+
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -ne 0) {
+            Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+            Write-Error "Failed to apply $($schemaFile.Name)."
+            exit $exitCode
+        }
+    }
+
+    Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+    Write-Host "Guacamole database schema initialized."
+}
+
+# ------------------------------------------------------------
+# Grant Guacamole database permissions
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "========================================"
+Write-Host "Granting Guacamole database permissions"
+Write-Host "========================================"
+
+$env:PGPASSWORD = $PostgresAdministratorPassword
+
+$grantSql = @"
+GRANT USAGE ON SCHEMA public TO :"guacamole_user";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"guacamole_user";
+GRANT SELECT, USAGE ON ALL SEQUENCES IN SCHEMA public TO :"guacamole_user";
+"@
+
+& $psqlPath `
+    -h $PostgresHostname `
+    -p 5432 `
+    -U $PostgresAdministratorLogin `
+    -d "guacamole_db" `
+    -v "guacamole_user=$GuacamolePostgresUsername" `
+    -v "ON_ERROR_STOP=1" `
+    -c $grantSql
+
+$exitCode = $LASTEXITCODE
+
+Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+if ($exitCode -ne 0) {
+    Write-Error "Failed to grant Guacamole PostgreSQL permissions."
+    exit $exitCode
+}
+
+Write-Host "Guacamole PostgreSQL permissions configured."
 
 # ------------------------------------------------------------
 # Final verification
@@ -227,6 +578,35 @@ foreach ($app in $apps) {
     else {
         Write-Warning "[NOT FOUND] $($app.Name) was not detected."
     }
+}
+
+# ------------------------------------------------------------
+# PostgreSQL verification
+# ------------------------------------------------------------
+
+Write-Host ""
+Write-Host "Checking PostgreSQL connection..."
+
+$env:PGPASSWORD = $GuacamolePostgresPassword
+
+& $psqlPath `
+    -h $PostgresHostname `
+    -p 5432 `
+    -U $GuacamolePostgresUsername `
+    -d "guacamole_db" `
+    -c "SELECT 1;" `
+    --no-password
+
+$exitCode = $LASTEXITCODE
+
+Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
+
+if ($exitCode -eq 0) {
+    Write-Host "[OK] Guacamole PostgreSQL user can connect."
+}
+else {
+    Write-Error "Guacamole PostgreSQL user could not connect."
+    exit $exitCode
 }
 
 Write-Host ""
