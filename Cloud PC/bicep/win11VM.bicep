@@ -105,7 +105,33 @@ resource requirementsExtension 'Microsoft.Compute/virtualMachines/extensions@202
     autoUpgradeMinorVersion: true
 
     protectedSettings: {
-      commandToExecute: 'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command "$scriptBytes = [System.Convert]::FromBase64String(''${requirementsScript}''); [System.IO.Directory]::CreateDirectory(''C:\\temp'') | Out-Null; [System.IO.File]::WriteAllBytes(''C:\\temp\\requirements.ps1'', $scriptBytes); & ''C:\\temp\\requirements.ps1'' -PostgresHostname ''${postgresHostname}'' -PostgresAdministratorLogin ''${postgresAdministratorLogin}'' -PostgresAdministratorPassword ''${postgresAdministratorPassword}'' -GuacamolePostgresUsername ''${guacamolePostgresUsername}'' -GuacamolePostgresPassword ''${guacamolePostgresPassword}''"'
+      commandToExecute: concat(
+        'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command ',
+        '"',
+        '$scriptBytes = [System.Convert]::FromBase64String(',
+        '"',
+        requirementsScript,
+        '"',
+        '); ',
+        '[System.IO.Directory]::CreateDirectory("C:\\temp") | Out-Null; ',
+        '[System.IO.File]::WriteAllBytes("C:\\temp\\requirements.ps1", $scriptBytes); ',
+        '& "C:\\temp\\requirements.ps1" ',
+        '-PostgresHostname "',
+        postgresHostname,
+        '" ',
+        '-PostgresAdministratorLogin "',
+        postgresAdministratorLogin,
+        '" ',
+        '-PostgresAdministratorPassword "',
+        postgresAdministratorPassword,
+        '" ',
+        '-GuacamolePostgresUsername "',
+        guacamolePostgresUsername,
+        '" ',
+        '-GuacamolePostgresPassword "',
+        guacamolePostgresPassword,
+        '"'
+      )
     }
   }
 }
