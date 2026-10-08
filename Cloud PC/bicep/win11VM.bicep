@@ -21,22 +21,17 @@ param guacamolePostgresPassword string
 var vmName = 'win11VM-${subscriptionSuffix}'
 var nicName = '${vmName}-nic'
 
-var requirementsScript = loadFileAsBase64('requirements.ps1')
-
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: nicName
   location: location
-
   properties: {
     ipConfigurations: [
       {
         name: 'ipconfig1'
-
         properties: {
           subnet: {
             id: subnetId
           }
-
           privateIPAllocationMethod: 'Dynamic'
         }
       }
@@ -47,23 +42,19 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
 resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
   name: vmName
   location: location
-
   properties: {
     hardwareProfile: {
       vmSize: 'Standard_B4as_v2'
     }
-
     osProfile: {
       computerName: vmName
       adminUsername: adminUsername
       adminPassword: adminPassword
-
       windowsConfiguration: {
         provisionVMAgent: true
         enableAutomaticUpdates: true
       }
     }
-
     storageProfile: {
       imageReference: {
         publisher: 'MicrosoftWindowsDesktop'
@@ -71,18 +62,14 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
         sku: 'win11-24h2-ent'
         version: 'latest'
       }
-
       osDisk: {
         createOption: 'FromImage'
-
         managedDisk: {
           storageAccountType: 'Standard_LRS'
         }
-
         diskSizeGB: 127
       }
     }
-
     networkProfile: {
       networkInterfaces: [
         {
@@ -97,41 +84,24 @@ resource requirementsExtension 'Microsoft.Compute/virtualMachines/extensions@202
   parent: vm
   name: 'requirementsInstall'
   location: location
-
   properties: {
     publisher: 'Microsoft.Compute'
     type: 'CustomScriptExtension'
     typeHandlerVersion: '1.10'
     autoUpgradeMinorVersion: true
-
+    settings: {
+      // Correct built-in Bicep function combination for embedding script content
+      script: base64(loadTextContent('requirements.ps1'))
+    }
     protectedSettings: {
-      commandToExecute: concat(
-        'powershell.exe -NonInteractive -ExecutionPolicy Unrestricted -Command ',
-        '"',
-        '$scriptBytes = [System.Convert]::FromBase64String(',
-        '"',
-        requirementsScript,
-        '"',
-        '); ',
-        '[System.IO.Directory]::CreateDirectory("C:\\temp") | Out-Null; ',
-        '[System.IO.File]::WriteAllBytes("C:\\temp\\requirements.ps1", $scriptBytes); ',
-        '& "C:\\temp\\requirements.ps1" ',
-        '-PostgresHostname "',
-        postgresHostname,
-        '" ',
-        '-PostgresAdministratorLogin "',
-        postgresAdministratorLogin,
-        '" ',
-        '-PostgresAdministratorPassword "',
-        postgresAdministratorPassword,
-        '" ',
-        '-GuacamolePostgresUsername "',
-        guacamolePostgresUsername,
-        '" ',
-        '-GuacamolePostgresPassword "',
-        guacamolePostgresPassword,
-        '"'
-      )
+      // Securely pass parameters directly to the script block natively
+      parameters: {
+        PostgresHostname: postgresHostname
+        PostgresAdministratorLogin: postgresAdministratorLogin
+        PostgresAdministratorPassword: postgresAdministratorPassword
+        GuacamolePostgresUsername: guacamolePostgresUsername
+        GuacamolePostgresPassword: guacamolePostgresPassword
+      }
     }
   }
 }
@@ -139,15 +109,12 @@ resource requirementsExtension 'Microsoft.Compute/virtualMachines/extensions@202
 resource autoShutdown 'Microsoft.DevTestLab/schedules@2018-09-15' = {
   name: 'shutdown-computevm-${vmName}'
   location: location
-
   properties: {
     status: 'Enabled'
     taskType: 'ComputeVmShutdownTask'
-
     dailyRecurrence: {
       time: '00:00'
     }
-
     timeZoneId: 'Tokyo Standard Time'
     targetResourceId: vm.id
   }
