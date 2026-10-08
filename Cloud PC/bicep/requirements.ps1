@@ -613,3 +613,56 @@ Write-Host ""
 Write-Host "========================================"
 Write-Host " Installation process completed"
 Write-Host "========================================"
+
+# ------------------------------------------------------------
+# Create local standard user
+# ------------------------------------------------------------
+
+$localUsername = "raphael"
+$localPassword = ConvertTo-SecureString "9809" -AsPlainText -Force
+
+$existingUser = Get-LocalUser -Name $localUsername -ErrorAction SilentlyContinue
+
+if (-not $existingUser) {
+    Write-Host "Creating local user $localUsername..."
+
+    New-LocalUser `
+        -Name $localUsername `
+        -Password $localPassword `
+        -FullName "Raphael" `
+        -Description "Local standard user" `
+        -PasswordNeverExpires `
+        -UserMayNotChangePassword:$false
+
+    Write-Host "Local user created."
+}
+else {
+    Write-Host "Local user $localUsername already exists."
+}
+
+# ------------------------------------------------------------
+# Enable Remote Desktop
+# ------------------------------------------------------------
+
+Write-Host "Enabling Remote Desktop..."
+
+Set-ItemProperty `
+    -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+    -Name "fDenyTSConnections" `
+    -Value 0
+
+Enable-NetFirewallRule `
+    -DisplayGroup "Remote Desktop"
+
+# ------------------------------------------------------------
+# Allow Raphael to use Remote Desktop
+# ------------------------------------------------------------
+
+Write-Host "Adding $localUsername to Remote Desktop Users..."
+
+Add-LocalGroupMember `
+    -Group "Remote Desktop Users" `
+    -Member $localUsername `
+    -ErrorAction SilentlyContinue
+
+Write-Host "Remote Desktop enabled for $localUsername."
