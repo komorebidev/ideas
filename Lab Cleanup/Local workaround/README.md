@@ -3,6 +3,7 @@
 * Azure student accounts cannot deploy to the region which is needed by Azure automation resource
 * Run locally instead
 * Use self signed certificate to authenticate as a service principal to Azure
+* Change the thumbprint in the cleanup script if changing host to run from
 
 ## Make 99 year certificate (this one is public for upload to Azure)
 
