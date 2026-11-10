@@ -8,14 +8,16 @@
 
 * The private part is stored in Windows store automatically on the local PC
 
+```powershell
 $cert = New-SelfSignedCertificate `
 >>     -Subject "CN=labCleanup" `
 >>     -CertStoreLocation "Cert:\CurrentUser\My" `
 >>     -KeySpec Signature `
 >>     -KeyExportPolicy Exportable `
 >>     -NotAfter (Get-Date).AddYears(99)
+```
 
-## testlab
+## test command
 ```powershell
 $tenantId = '<tenant-id>'
 $appId = '<application-client-id>'
