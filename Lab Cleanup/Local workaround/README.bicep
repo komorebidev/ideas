@@ -59,12 +59,15 @@ Set-AzContext -SubscriptionId $subscriptionId
 
 ## Set task that deletes at 19pm JST (run from cleanup.ps1 folder)
 
+* It uses VBS script to launch the powershell
+* The task will launch the VBS
+
 ```powershell
-$scriptPath = (Resolve-Path '.\cleanup.ps1').Path
+$vbsPath = (Resolve-Path '.\run_cleanup.vbs').Path
 
 $action = New-ScheduledTaskAction `
-    -Execute 'powershell.exe' `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+    -Execute 'wscript.exe' `
+    -Argument "`"$vbsPath`""
 
 $trigger = New-ScheduledTaskTrigger `
     -Daily `
@@ -80,6 +83,7 @@ Register-ScheduledTask `
     -Action $action `
     -Trigger $trigger `
     -Principal $principal `
-    -Description 'Deletes Azure resource groups matching lab wildcard patterns nightly' `
+    -Description 'Silently deletes Azure resource groups matching lab wildcard patterns nightly' `
+    -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable) `
     -Force
 ```
