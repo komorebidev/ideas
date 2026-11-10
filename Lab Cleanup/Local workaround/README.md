@@ -103,5 +103,5 @@ Register-ScheduledTask `
 ## Manually run the task
 
 ```powershell
-Get-ScheduledTaskInfo -TaskName 'Nightly Azure Lab Cleanup'
+Start-ScheduledTask -TaskName 'Nightly Azure Lab Cleanup'
 ```
