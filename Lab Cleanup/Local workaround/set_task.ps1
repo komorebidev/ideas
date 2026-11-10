@@ -18,7 +18,6 @@ $trigger = New-ScheduledTaskTrigger `
 $principal = New-ScheduledTaskPrincipal `
     -UserId (whoami) `
     -LogonType Interactive `
-    -RunLevel Highest
 
 Register-ScheduledTask `
     -TaskName 'Nightly Azure Lab Cleanup' `
