@@ -62,6 +62,12 @@ Set-AzContext -SubscriptionId $subscriptionId
 * It uses VBS script to launch the powershell
 * The task will launch the VBS
 
+
+```powershell
+set_task.ps1
+```
+
+### Manually set the task
 ```powershell
 $vbsPath = (Resolve-Path '.\run_cleanup.vbs').Path
 
@@ -86,4 +92,10 @@ Register-ScheduledTask `
     -Description 'Silently deletes Azure resource groups matching lab wildcard patterns nightly' `
     -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable) `
     -Force
+```
+
+## Manually run the task
+
+```powershell
+Get-ScheduledTaskInfo -TaskName 'Nightly Azure Lab Cleanup'
 ```
