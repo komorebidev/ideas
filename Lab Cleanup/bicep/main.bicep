@@ -15,7 +15,7 @@ param resourceGroupNamePatterns array = [
 ]
 
 @description('Schedule start time, local Japan time, with UTC offset.')
-param scheduleStartTime string = '2026-11-10T19:00:00+09:00'
+param scheduleTime string = '2026-11-10T19:00:00+09:00'
 
 @description('Set true to list matches without deleting. Keep true for initial validation.')
 param dryRun bool = false
@@ -32,20 +32,22 @@ module automation 'automation.bicep' = {
     location: location
     automationAccountName: automationAccountName
     resourceGroupNamePatterns: resourceGroupNamePatterns
-    scheduleStartTime: scheduleStartTime
+    scheduleTime: scheduleTime
     dryRun: dryRun
     excludedResourceGroupName: cleanupResourceGroupName
   }
 }
 
-var subscriptionScope = subscription().id
-var contributorRoleDefinitionId = subscriptionScope + '/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c'
+var contributorRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'b24988ac-6180-42a0-ab88-20f7382dd24c'
+)
 
 resource cleanupRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(subscriptionScope, automation.outputs.principalId, contributorRoleDefinitionId)
+  name: guid(subscription().id, automationAccountName, contributorRoleDefinitionId)
   scope: subscription()
   properties: {
-    principalId: automation.outputs.principalId
+    principalId: automation.outputs.automationPrincipalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: contributorRoleDefinitionId
   }

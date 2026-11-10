@@ -21,23 +21,22 @@ resource automation 'Microsoft.Automation/automationAccounts@2024-10-23' = {
   }
 }
 
-resource automationContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(automation.id, deploymentScript.identity.principalId, 'automation-contributor')
-  scope: automation
-  properties: {
-    principalId: deploymentScript.identity.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'f353d9bd-d4a6-484e-a77a-8050b599b867')
-  }
+resource deploymentScriptIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: 'id-nightly-cleanup-script'
+  location: location
 }
 
-resource cleanupContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(subscription().id, automation.identity.principalId, 'subscription-contributor')
-  scope: subscription()
+var automationContributorRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'f353d9bd-d4a6-484e-a77a-8050b599b867'
+)
+
+resource automationContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, deploymentScriptIdentity.id, automationContributorRoleDefinitionId)
   properties: {
-    principalId: automation.identity.principalId
+    principalId: deploymentScriptIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')
+    roleDefinitionId: automationContributorRoleDefinitionId
   }
 }
 
@@ -46,7 +45,10 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   location: location
   kind: 'AzurePowerShell'
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${deploymentScriptIdentity.id}': {}
+    }
   }
   properties: {
     azPowerShellVersion: '13.0'
@@ -86,8 +88,8 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     retentionInterval: 'P1D'
   }
   dependsOn: [
+    automation
     automationContributorRole
-    cleanupContributorRole
   ]
 }
 
