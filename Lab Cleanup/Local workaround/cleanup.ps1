@@ -7,7 +7,7 @@ $dryRun = $false
 # Entra App Registration
 $tenantId = 'b021614f-bc20-4b53-b919-2a753834fa6f'
 $appId = '755ca023-4e03-4586-9493-0414afb1f2fa'
-$thumbprint = '83C7A2A516AFA858653EE1DBBB0CB3A5E63172AD'
+$thumbprint = '255EC0CAFD454005E09D37986E593C0760D50F60'
 $subscriptionId = '89ca3363-489e-48b8-b449-f61c1069d3c0'
 
 # Authenticate
