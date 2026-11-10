@@ -15,6 +15,9 @@ $cert = New-SelfSignedCertificate `
 >>     -KeySpec Signature `
 >>     -KeyExportPolicy Exportable `
 >>     -NotAfter (Get-Date).AddYears(99)
+Export-Certificate `
+>>     -Cert $cert `
+>>     -FilePath "$HOME\labCleanup.cer"
 ```
 
 ## test command
