@@ -1,7 +1,7 @@
 targetScope = 'subscription'
 
 @description('Azure region for the Automation Account.')
-param location string = 'japaneast'
+param location string = 'japanwest'
 
 @description('Resource group to contain the cleanup Automation Account. Keep this group outside all cleanup patterns.')
 param cleanupResourceGroupName string = 'rg-nightly-cleanup'
