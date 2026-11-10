@@ -1,5 +1,5 @@
 $resourceGroupNamePatterns = @(
-    'lab*'
+    '*lab*'
 )
 
 $dryRun = $false
