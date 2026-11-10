@@ -10,14 +10,15 @@
 
 ```powershell
 $cert = New-SelfSignedCertificate `
->>     -Subject "CN=labCleanup" `
->>     -CertStoreLocation "Cert:\CurrentUser\My" `
->>     -KeySpec Signature `
->>     -KeyExportPolicy Exportable `
->>     -NotAfter (Get-Date).AddYears(99)
+    -Subject "CN=labCleanup" `
+    -CertStoreLocation "Cert:\CurrentUser\My" `
+    -KeySpec Signature `
+    -KeyExportPolicy Exportable `
+    -NotAfter (Get-Date).AddYears(99)
+
 Export-Certificate `
->>     -Cert $cert `
->>     -FilePath "$HOME\labCleanup.cer"
+    -Cert $cert `
+    -FilePath "$HOME\labCleanup.cer"
 ```
 
 ## test command
