@@ -1,0 +1,4 @@
+Flask
+gunicorn
+azure-identity
+requests
