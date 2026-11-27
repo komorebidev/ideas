@@ -225,3 +225,12 @@ Get-ChildItem Cert:\LocalMachine\Root |
     Where-Object { $_.Issuer -like "*DigiCert*" -or $_.Subject -like "*DigiCert*" } |
     Format-Table Subject, Thumbprint, NotAfter -AutoSize
 ```
+
+# Build the deployment zip
+
+Run from the `app` folder. It packages the app into `Test Lab/app.zip` (skips `.venv`, `__pycache__` and the script itself). Same script as the Tango repo.
+
+```powershell
+cd app
+python zip.py
+```
