@@ -1,0 +1,1 @@
+$subId = az account show --query id --output tsv; $suffix = $subId.Substring($subId.Length - 4); $rg = "testlabapp-$suffix"; $app = "labapp-$suffix"; az webapp deploy --resource-group $rg --name $app --src-path "app.zip" --type zip

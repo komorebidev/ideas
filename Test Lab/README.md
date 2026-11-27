@@ -234,3 +234,12 @@ Run from the `app` folder. It packages the app into `Test Lab/app.zip` (skips `.
 cd app
 python zip.py
 ```
+
+# Deploy
+
+Run from the `Test Lab` folder (where `app.zip` is), after building the zip. Deploys to `labapp-<suffix>` in `testlabapp-<suffix>`, where `<suffix>` is the last 4 characters of the current subscription ID. Same script as the Tango repo.
+
+```powershell
+cd ..
+./deploy.ps1
+```
